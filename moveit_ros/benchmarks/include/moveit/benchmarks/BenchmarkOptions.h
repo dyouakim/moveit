@@ -64,8 +64,8 @@ public:
   const std::string& getGroupName() const;
   const std::string& getOutputDirectory() const;
   const std::string& getQueryRegex() const;
-  const std::string& getStartStateRegex() const;
-  const std::string& getGoalConstraintRegex() const;
+  const std::vector<std::string>& getStartStateRegex() const;
+  const std::vector<std::string>& getGoalConstraintRegex() const;
   const std::string& getPathConstraintRegex() const;
   const std::string& getTrajectoryConstraintRegex() const;
   void getGoalOffsets(std::vector<double>& offsets) const;
@@ -97,8 +97,8 @@ protected:
   std::string group_name_;
   std::string output_directory_;
   std::string query_regex_;
-  std::string start_state_regex_;
-  std::string goal_constraint_regex_;
+  std::vector<std::string> start_state_regex_;
+  std::vector<std::string> goal_constraint_regex_;
   std::string path_constraint_regex_;
   std::string trajectory_constraint_regex_;
   double goal_offsets[6];

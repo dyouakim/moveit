@@ -52,3 +52,9 @@ if(CATKIN_ENABLE_TESTING)
   target_link_libraries(test_state_space ${MOVEIT_LIB_NAME} ${OMPL_LIBRARIES} ${catkin_LIBRARIES} ${Boost_LIBRARIES})
   set_target_properties(test_state_space PROPERTIES LINK_FLAGS "${OpenMP_CXX_FLAGS}")
 endif()
+
+
+
+
+
+

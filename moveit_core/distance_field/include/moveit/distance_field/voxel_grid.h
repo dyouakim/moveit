@@ -286,6 +286,11 @@ public:
    */
   bool isCellValid(Dimension dim, int cell) const;
 
+  int getTotalCells()
+  {
+    return num_cells_total_;
+  }
+
 protected:
   T* data_;                /**< \brief Storage for the full set of data elements */
   T default_object_;       /**< \brief The default object to return in case of out-of-bounds query */
@@ -348,7 +353,8 @@ VoxelGrid<T>::VoxelGrid(double size_x, double size_y, double size_z, double reso
 }
 
 template <typename T>
-VoxelGrid<T>::VoxelGrid() : data_(NULL)
+VoxelGrid<T>::VoxelGrid()
+  : data_(NULL)
 {
   for (int i = DIM_X; i <= DIM_Z; ++i)
   {

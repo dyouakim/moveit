@@ -139,6 +139,10 @@ public:
                     const planning_interface::MotionPlanRequest& req, planning_interface::MotionPlanResponse& res,
                     std::vector<std::size_t>& adapter_added_state_index) const;
 
+  bool repairPlan(const planning_scene::PlanningSceneConstPtr& planning_scene,
+                    const planning_interface::MotionPlanRequest& req,
+                    planning_interface::MotionPlanResponse& res) const;
+
   /** \brief Request termination, if a generatePlan() function is currently computing plans */
   void terminate() const;
 

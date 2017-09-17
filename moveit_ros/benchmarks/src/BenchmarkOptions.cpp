@@ -118,12 +118,12 @@ const std::string& BenchmarkOptions::getQueryRegex() const
   return query_regex_;
 }
 
-const std::string& BenchmarkOptions::getStartStateRegex() const
+const std::vector<std::string>& BenchmarkOptions::getStartStateRegex() const
 {
   return start_state_regex_;
 }
 
-const std::string& BenchmarkOptions::getGoalConstraintRegex() const
+const std::vector<std::string>& BenchmarkOptions::getGoalConstraintRegex() const
 {
   return goal_constraint_regex_;
 }
@@ -182,13 +182,27 @@ void BenchmarkOptions::readWarehouseOptions(ros::NodeHandle& nh)
 
 void BenchmarkOptions::readBenchmarkParameters(ros::NodeHandle& nh)
 {
+  std::string goalConstraintsList,startList;
   nh.param(std::string("benchmark_config/parameters/name"), benchmark_name_, std::string(""));
   nh.param(std::string("benchmark_config/parameters/runs"), runs_, 10);
   nh.param(std::string("benchmark_config/parameters/timeout"), timeout_, 10.0);
   nh.param(std::string("benchmark_config/parameters/output_directory"), output_directory_, std::string(""));
-  nh.param(std::string("benchmark_config/parameters/queries"), query_regex_, std::string(".*"));
-  nh.param(std::string("benchmark_config/parameters/start_states"), start_state_regex_, std::string(""));
-  nh.param(std::string("benchmark_config/parameters/goal_constraints"), goal_constraint_regex_, std::string(""));
+  nh.param(std::string("benchmark_config/parameters/queries"), query_regex_, std::string(""));
+  nh.param(std::string("benchmark_config/parameters/start_states"), startList, std::string(""));
+   std::istringstream startStream(startList);
+  std::string token;
+
+  while(std::getline(startStream, token, ',')) {
+    start_state_regex_.push_back(token);
+  }
+
+  nh.param(std::string("benchmark_config/parameters/goal_constraints"), goalConstraintsList, std::string(""));
+  std::istringstream ss(goalConstraintsList);
+
+  while(std::getline(ss, token, ',')) {
+    goal_constraint_regex_.push_back(token);
+  }
+
   nh.param(std::string("benchmark_config/parameters/path_constraints"), path_constraint_regex_, std::string(""));
   nh.param(std::string("benchmark_config/parameters/trajectory_constraints"), trajectory_constraint_regex_,
            std::string(""));
@@ -212,8 +226,10 @@ void BenchmarkOptions::readBenchmarkParameters(ros::NodeHandle& nh)
   ROS_INFO("Benchmark timeout: %f secs", timeout_);
   ROS_INFO("Benchmark group: %s", group_name_.c_str());
   ROS_INFO("Benchmark query regex: '%s'", query_regex_.c_str());
-  ROS_INFO("Benchmark start state regex: '%s':", start_state_regex_.c_str());
-  ROS_INFO("Benchmark goal constraint regex: '%s':", goal_constraint_regex_.c_str());
+   for(int i=0;i<start_state_regex_.size();i++)
+    ROS_INFO("Benchmark start state regex['%i']: '%s':",i, start_state_regex_[i].c_str());
+  for(int i=0;i<goal_constraint_regex_.size();i++)
+    ROS_INFO("Benchmark goal constraint regex['%i']: '%s':",i, goal_constraint_regex_[i].c_str());
   ROS_INFO("Benchmark path constraint regex: '%s':", path_constraint_regex_.c_str());
   ROS_INFO("Benchmark goal offsets (%f %f %f, %f %f %f)", goal_offsets[0], goal_offsets[1], goal_offsets[2],
            goal_offsets[3], goal_offsets[4], goal_offsets[5]);

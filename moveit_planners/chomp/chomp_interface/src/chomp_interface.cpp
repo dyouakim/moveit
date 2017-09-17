@@ -38,14 +38,14 @@
 
 namespace chomp_interface
 {
-CHOMPInterface::CHOMPInterface(const ros::NodeHandle& nh) : ChompPlanner(), nh_(nh)
+CHOMPInterface::CHOMPInterface() : ChompPlanner()
 {
   loadParams();
 }
 
 void CHOMPInterface::loadParams()
 {
-  nh_.param("planning_time_limit", params_.planning_time_limit_, 10.0);
+  nh_.param("planning_time_limit", params_.planning_time_limit_, 20.0);
   nh_.param("max_iterations", params_.max_iterations_, 200);
   nh_.param("max_iterations_after_collision_free", params_.max_iterations_after_collision_free_, 5);
   nh_.param("smoothness_cost_weight", params_.smoothness_cost_weight_, 0.1);
@@ -66,7 +66,7 @@ void CHOMPInterface::loadParams()
   nh_.param("animate_endeffector", params_.animate_endeffector_, false);
   nh_.param("animate_endeffector_segment", params_.animate_endeffector_segment_, std::string("r_gripper_tool_frame"));
   nh_.param("joint_update_limit", params_.joint_update_limit_, 0.1);
-  nh_.param("collision_clearence", params_.min_clearence_, 0.2);
+  nh_.param("collision_clearence", params_.min_clearence_, 0.5);
   nh_.param("collision_threshold", params_.collision_threshold_, 0.07);
   nh_.param("random_jump_amount", params_.random_jump_amount_, 1.0);
   nh_.param("use_stochastic_descent", params_.use_stochastic_descent_, true);

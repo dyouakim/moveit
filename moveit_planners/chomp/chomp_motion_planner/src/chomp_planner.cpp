@@ -57,6 +57,10 @@ bool ChompPlanner::solve(const planning_scene::PlanningSceneConstPtr& planning_s
   {
     ROS_INFO_STREAM("Planning scene is configured. Beginning to plan.");
   }
+  moveit_msgs::PlanningScene msg;
+  planning_scene->getPlanningSceneMsg(msg);
+  ROS_ERROR_STREAM("Number of obstacles before planning "<<msg.world.collision_objects.size());
+  
   ros::WallTime start_time = ros::WallTime::now();
   ChompTrajectory trajectory(planning_scene->getRobotModel(), 3.0, .03, req.group_name);
   jointStateToArray(planning_scene->getRobotModel(), req.start_state.joint_state, req.group_name,
@@ -95,15 +99,16 @@ bool ChompPlanner::solve(const planning_scene::PlanningSceneConstPtr& planning_s
     }
   }
 
+ 
   // fill in an initial quintic spline trajectory
   trajectory.fillInMinJerk();
-
   // optimize!
   moveit::core::RobotState start_state(planning_scene->getCurrentState());
   moveit::core::robotStateMsgToRobotState(req.start_state, start_state);
   start_state.update();
 
   ros::WallTime create_time = ros::WallTime::now();
+
   ChompOptimizer optimizer(&trajectory, planning_scene, req.group_name, &params, start_state);
   if (!optimizer.isInitialized())
   {
@@ -152,6 +157,8 @@ bool ChompPlanner::solve(const planning_scene::PlanningSceneConstPtr& planning_s
            res.trajectory[0].joint_trajectory.points[goal_index].time_from_start.toSec());
   res.error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
   res.processing_time.push_back((ros::WallTime::now() - start_time).toSec());
+  res.cost.push_back(optimizer.getCost());
+  res.iterations.push_back(optimizer.getIterations());
   return true;
 }
 }

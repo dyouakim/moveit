@@ -56,11 +56,9 @@ void move_group::MoveGroupMoveAction::initialize()
   move_action_server_->start();
 }
 
-void move_group::MoveGroupMoveAction::executeMoveCallback(const moveit_msgs::MoveGroupGoalConstPtr& goal)
+void move_group::MoveGroupMoveAction::executeMoveCallback(const moveit_msgs::MoveGroupGoalConstPtr &goal)
 {
   setMoveState(PLANNING);
-  // before we start planning, ensure that we have the latest robot state received...
-  context_->planning_scene_monitor_->waitForCurrentRobotState(ros::Time::now());
   context_->planning_scene_monitor_->updateFrameTransforms();
 
   moveit_msgs::MoveGroupResult action_res;
@@ -86,12 +84,11 @@ void move_group::MoveGroupMoveAction::executeMoveCallback(const moveit_msgs::Mov
     else
       move_action_server_->setAborted(action_res, response);
   }
-
   setMoveState(IDLE);
 }
 
-void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const moveit_msgs::MoveGroupGoalConstPtr& goal,
-                                                                         moveit_msgs::MoveGroupResult& action_res)
+void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const moveit_msgs::MoveGroupGoalConstPtr &goal,
+                                                                         moveit_msgs::MoveGroupResult &action_res)
 {
   ROS_INFO("Combined planning and execution request received for MoveGroup action. Forwarding to planning and "
            "execution pipeline.");
@@ -99,7 +96,7 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
   if (planning_scene::PlanningScene::isEmpty(goal->planning_options.planning_scene_diff))
   {
     planning_scene_monitor::LockedPlanningSceneRO lscene(context_->planning_scene_monitor_);
-    const robot_state::RobotState& current_state = lscene->getCurrentState();
+    const robot_state::RobotState &current_state = lscene->getCurrentState();
 
     // check to see if the desired constraints are already met
     for (std::size_t i = 0; i < goal->request.goal_constraints.size(); ++i)
@@ -115,10 +112,10 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
 
   plan_execution::PlanExecution::Options opt;
 
-  const moveit_msgs::MotionPlanRequest& motion_plan_request =
+  const moveit_msgs::MotionPlanRequest &motion_plan_request =
       planning_scene::PlanningScene::isEmpty(goal->request.start_state) ? goal->request :
                                                                           clearRequestStartState(goal->request);
-  const moveit_msgs::PlanningScene& planning_scene_diff =
+  const moveit_msgs::PlanningScene &planning_scene_diff =
       planning_scene::PlanningScene::isEmpty(goal->planning_options.planning_scene_diff.robot_state) ?
           goal->planning_options.planning_scene_diff :
           clearSceneRobotState(goal->planning_options.planning_scene_diff);
@@ -128,8 +125,9 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
   opt.replan_delay_ = goal->planning_options.replan_delay;
   opt.before_execution_callback_ = boost::bind(&MoveGroupMoveAction::startMoveExecutionCallback, this);
 
-  opt.plan_callback_ =
-      boost::bind(&MoveGroupMoveAction::planUsingPlanningPipeline, this, boost::cref(motion_plan_request), _1);
+  opt.plan_callback_ = boost::bind(&MoveGroupMoveAction::planUsingPlanningPipeline, this, boost::cref(motion_plan_request), _1);
+  opt.repair_plan_callback_ = boost::bind(&MoveGroupMoveAction::repairPlan, this, boost::cref(motion_plan_request), _1, _2);
+
   if (goal->planning_options.look_around && context_->plan_with_sensing_)
   {
     opt.plan_callback_ = boost::bind(&plan_execution::PlanWithSensing::computePlan, context_->plan_with_sensing_.get(),
@@ -147,40 +145,48 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
   action_res.error_code = plan.error_code_;
 }
 
-void move_group::MoveGroupMoveAction::executeMoveCallback_PlanOnly(const moveit_msgs::MoveGroupGoalConstPtr& goal,
-                                                                   moveit_msgs::MoveGroupResult& action_res)
+void move_group::MoveGroupMoveAction::executeMoveCallback_PlanOnly(const moveit_msgs::MoveGroupGoalConstPtr &goal,
+                                                                   moveit_msgs::MoveGroupResult &action_res)
 {
   ROS_INFO("Planning request received for MoveGroup action. Forwarding to planning pipeline.");
 
   planning_scene_monitor::LockedPlanningSceneRO lscene(context_->planning_scene_monitor_);  // lock the scene so that it
                                                                                             // does not modify the world
                                                                                             // representation while
-                                                                                            // diff() is called
-  const planning_scene::PlanningSceneConstPtr& the_scene =
+                  
+                                                                                   // diff() is called
+  const planning_scene::PlanningSceneConstPtr &the_scene =
       (planning_scene::PlanningScene::isEmpty(goal->planning_options.planning_scene_diff)) ?
-          static_cast<const planning_scene::PlanningSceneConstPtr&>(lscene) :
+          static_cast<const planning_scene::PlanningSceneConstPtr &>(lscene) :
           lscene->diff(goal->planning_options.planning_scene_diff);
   planning_interface::MotionPlanResponse res;
   try
   {
     context_->planning_pipeline_->generatePlan(the_scene, goal->request, res);
+
+      
   }
-  catch (std::exception& ex)
+  catch (std::runtime_error &ex)
   {
     ROS_ERROR("Planning pipeline threw an exception: %s", ex.what());
+    res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
+  }
+  catch (...)
+  {
+    ROS_ERROR("Planning pipeline threw an exception");
     res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
   }
 
   convertToMsg(res.trajectory_, action_res.trajectory_start, action_res.planned_trajectory);
   action_res.error_code = res.error_code_;
   action_res.planning_time = res.planning_time_;
+  action_res.planned_trajectory.ee_pose = res.trajectory_->getEEPath();
 }
 
-bool move_group::MoveGroupMoveAction::planUsingPlanningPipeline(const planning_interface::MotionPlanRequest& req,
-                                                                plan_execution::ExecutableMotionPlan& plan)
+bool move_group::MoveGroupMoveAction::planUsingPlanningPipeline(const planning_interface::MotionPlanRequest &req,
+                                                                plan_execution::ExecutableMotionPlan &plan)
 {
   setMoveState(PLANNING);
-
   planning_scene_monitor::LockedPlanningSceneRO lscene(plan.planning_scene_monitor_);
   bool solved = false;
   planning_interface::MotionPlanResponse res;
@@ -188,9 +194,14 @@ bool move_group::MoveGroupMoveAction::planUsingPlanningPipeline(const planning_i
   {
     solved = context_->planning_pipeline_->generatePlan(plan.planning_scene_, req, res);
   }
-  catch (std::exception& ex)
+  catch (std::runtime_error &ex)
   {
     ROS_ERROR("Planning pipeline threw an exception: %s", ex.what());
+    res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
+  }
+  catch (...)
+  {
+    ROS_ERROR("Planning pipeline threw an exception");
     res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
   }
   if (res.trajectory_)
@@ -201,6 +212,50 @@ bool move_group::MoveGroupMoveAction::planUsingPlanningPipeline(const planning_i
   }
   plan.error_code_ = res.error_code_;
   return solved;
+}
+
+bool move_group::MoveGroupMoveAction::repairPlan(const planning_interface::MotionPlanRequest &req, plan_execution::ExecutableMotionPlan &plan, const std::pair<int, int>& invalidPointIdx)
+{
+  //added a new field in the motionplan request message
+  //TODO maybe need to add more information and it is better to create another moveit_msgs
+
+  planning_interface::MotionPlanRequest repairReq;
+  repairReq = req;
+  if(req.planner_id.find("traplanner"))
+  {
+    setMoveState(PLANNING);
+    planning_scene_monitor::LockedPlanningSceneRO lscene(plan.planning_scene_monitor_);
+    bool solved = false;
+    planning_interface::MotionPlanResponse res;
+    try
+    {
+    repairReq.repair_index = std::get<0>(invalidPointIdx);
+    solved = context_->planning_pipeline_->repairPlan(plan.planning_scene_, repairReq, res);
+    }
+    catch (std::runtime_error &ex)
+    {
+      ROS_ERROR("Planning pipeline threw an exception: %s", ex.what());
+      res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
+    }
+    catch (...)
+    {
+      ROS_ERROR("Planning pipeline threw an exception");
+      res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
+    }
+    if (res.trajectory_)
+    {
+      plan.plan_components_.resize(1);
+      plan.plan_components_[0].trajectory_ = res.trajectory_;
+      plan.plan_components_[0].description_ = "plan";
+    }
+    plan.error_code_ = res.error_code_;
+    return solved;
+  }
+  else
+  {
+    repairReq.repair_index = -1;
+    return planUsingPlanningPipeline(repairReq,plan);
+  }
 }
 
 void move_group::MoveGroupMoveAction::startMoveExecutionCallback()

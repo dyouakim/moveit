@@ -91,6 +91,7 @@ bool ChainIkSolverVel_pinv_mimic::setMimicJoints(const std::vector<kdl_kinematic
 bool ChainIkSolverVel_pinv_mimic::setRedundantJointsMapIndex(
     const std::vector<unsigned int>& redundant_joints_map_index)
 {
+  ROS_WARN_STREAM("In KDL vel kinematic: setRedundantJointsMapIndex");
   if (redundant_joints_map_index.size() != chain.getNrOfJoints() - num_mimic_joints - num_redundant_joints)
   {
     ROS_ERROR("Map index size: %d does not match expected size. No. of joints: %d, num_mimic_joints: %d, "
@@ -283,7 +284,7 @@ int ChainIkSolverVel_pinv_mimic::CartToJnt(const JntArray& q_in, const Twist& v_
     for (j = 0; j < rows; j++)
     {
       if (!position_ik)
-        sum += U[j](i) * v_in(j);
+        sum += U[j](i)*v_in(j);
       else
         sum += U_translate(j, i) * v_in(j);
     }
@@ -302,7 +303,7 @@ int ChainIkSolverVel_pinv_mimic::CartToJnt(const JntArray& q_in, const Twist& v_
     for (j = 0; j < jac_reduced.columns(); j++)
     {
       if (!position_ik)
-        sum += V[i](j) * tmp(j);
+        sum += V[i](j)*tmp(j);
       else
         sum += V_translate(i, j) * tmp(j);
     }

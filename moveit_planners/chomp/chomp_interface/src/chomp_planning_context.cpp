@@ -9,29 +9,30 @@
 
 namespace chomp_interface
 {
-CHOMPPlanningContext::CHOMPPlanningContext(const std::string& name, const std::string& group,
-                                           const robot_model::RobotModelConstPtr& model)
+CHOMPPlanningContext::CHOMPPlanningContext(const std::string &name, const std::string &group,
+                                           const robot_model::RobotModelConstPtr &model)
   : planning_interface::PlanningContext(name, group), robot_model_(model)
 {
   chomp_interface_ = CHOMPInterfacePtr(new CHOMPInterface());
 
-  collision_detection::CollisionDetectorAllocatorPtr hybrid_cd(
-      collision_detection::CollisionDetectorAllocatorHybrid::create());
-
-  if (!this->getPlanningScene())
+ 
+ /*if (!this->getPlanningScene())
   {
     ROS_INFO_STREAM("Configuring New Planning Scene.");
+     collision_detection::CollisionDetectorAllocatorPtr hybrid_cd(
+      collision_detection::CollisionDetectorAllocatorHybrid::create());
     planning_scene::PlanningScenePtr planning_scene_ptr(new planning_scene::PlanningScene(model));
     planning_scene_ptr->setActiveCollisionDetector(hybrid_cd, true);
     setPlanningScene(planning_scene_ptr);
-  }
+  }*/
+  
 }
 
 CHOMPPlanningContext::~CHOMPPlanningContext()
 {
 }
 
-bool CHOMPPlanningContext::solve(planning_interface::MotionPlanDetailedResponse& res)
+bool CHOMPPlanningContext::solve(planning_interface::MotionPlanDetailedResponse &res)
 {
   moveit_msgs::MotionPlanDetailedResponse res2;
   if (chomp_interface_->solve(planning_scene_, request_, chomp_interface_->getParams(), res2))
@@ -49,6 +50,8 @@ bool CHOMPPlanningContext::solve(planning_interface::MotionPlanDetailedResponse&
                           request_.max_acceleration_scaling_factor);
 
     res.description_.push_back("plan");
+    res.cost_.push_back(res2.cost[0]);
+    res.iterations_.push_back(res2.iterations[0]);
     res.processing_time_ = res2.processing_time;
     res.error_code_ = res2.error_code;
     return true;
@@ -60,7 +63,7 @@ bool CHOMPPlanningContext::solve(planning_interface::MotionPlanDetailedResponse&
   }
 }
 
-bool CHOMPPlanningContext::solve(planning_interface::MotionPlanResponse& res)
+bool CHOMPPlanningContext::solve(planning_interface::MotionPlanResponse &res)
 {
   planning_interface::MotionPlanDetailedResponse res_detailed;
   bool result = solve(res_detailed);
@@ -68,7 +71,8 @@ bool CHOMPPlanningContext::solve(planning_interface::MotionPlanResponse& res)
   res.error_code_ = res_detailed.error_code_;
   res.trajectory_ = res_detailed.trajectory_[0];
   res.planning_time_ = res_detailed.processing_time_[0];
-
+  res.cost_=res_detailed.cost_[0];
+  res.iterations_=res_detailed.iterations_[0];
   return result;
 }
 

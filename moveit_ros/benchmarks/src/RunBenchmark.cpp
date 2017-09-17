@@ -39,18 +39,19 @@
 
 #include <moveit/benchmarks/BenchmarkOptions.h>
 #include <moveit/benchmarks/BenchmarkExecutor.h>
-
+#include <moveit_msgs/GetPositionIK.h>
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "moveit_run_benchmark");
   ros::AsyncSpinner spinner(1);
-  spinner.start();
-
+  spinner.start();;
   // Read benchmark options from param server
   moveit_ros_benchmarks::BenchmarkOptions opts(ros::this_node::getName());
   // Setup benchmark server
-  moveit_ros_benchmarks::BenchmarkExecutor server;
-
+  moveit_ros_benchmarks::BenchmarkExecutor server(ros::this_node::getName());
+  moveit_msgs::GetPositionIK::Request ik_req;
+  moveit_msgs::GetPositionIK::Response ik_res;
+            
   std::vector<std::string> plugins;
   opts.getPlannerPluginList(plugins);
   server.initialize(plugins);

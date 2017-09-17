@@ -48,7 +48,7 @@ MOVEIT_CLASS_FORWARD(CHOMPInterface);
 class CHOMPInterface : public chomp::ChompPlanner
 {
 public:
-  CHOMPInterface(const ros::NodeHandle& nh = ros::NodeHandle("~"));
+  CHOMPInterface();
 
   const chomp::ChompParameters& getParams() const
   {

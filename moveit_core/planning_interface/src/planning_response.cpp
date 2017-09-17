@@ -37,10 +37,12 @@
 #include <moveit/planning_interface/planning_response.h>
 #include <moveit/robot_state/conversions.h>
 
-void planning_interface::MotionPlanResponse::getMessage(moveit_msgs::MotionPlanResponse& msg) const
+void planning_interface::MotionPlanResponse::getMessage(moveit_msgs::MotionPlanResponse &msg) const
 {
   msg.error_code = error_code_;
   msg.planning_time = planning_time_;
+  msg.cost = cost_; 
+  msg.iterations = iterations_;
   if (trajectory_ && !trajectory_->empty())
   {
     robot_state::robotStateToRobotStateMsg(trajectory_->getFirstWayPoint(), msg.trajectory_start);
@@ -49,7 +51,7 @@ void planning_interface::MotionPlanResponse::getMessage(moveit_msgs::MotionPlanR
   }
 }
 
-void planning_interface::MotionPlanDetailedResponse::getMessage(moveit_msgs::MotionPlanDetailedResponse& msg) const
+void planning_interface::MotionPlanDetailedResponse::getMessage(moveit_msgs::MotionPlanDetailedResponse &msg) const
 {
   msg.error_code = error_code_;
 
@@ -75,5 +77,9 @@ void planning_interface::MotionPlanDetailedResponse::getMessage(moveit_msgs::Mot
       msg.description.push_back(description_[i]);
     if (processing_time_.size() > i)
       msg.processing_time.push_back(processing_time_[i]);
+    if(cost_.size()>i)
+      msg.cost.push_back(cost_[i]);
+    if(iterations_.size()>i)
+      msg.iterations.push_back(iterations_[i]);
   }
 }

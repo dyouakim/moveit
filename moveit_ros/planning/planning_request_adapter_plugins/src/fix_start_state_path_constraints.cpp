@@ -55,18 +55,18 @@ public:
     return "Fix Start State Path Constraints";
   }
 
-  virtual bool adaptAndPlan(const PlannerFn& planner, const planning_scene::PlanningSceneConstPtr& planning_scene,
-                            const planning_interface::MotionPlanRequest& req,
-                            planning_interface::MotionPlanResponse& res,
-                            std::vector<std::size_t>& added_path_index) const
+  virtual bool adaptAndPlan(const PlannerFn &planner, const planning_scene::PlanningSceneConstPtr &planning_scene,
+                            const planning_interface::MotionPlanRequest &req,
+                            planning_interface::MotionPlanResponse &res,
+                            std::vector<std::size_t> &added_path_index) const
   {
     ROS_DEBUG("Running '%s'", getDescription().c_str());
-
+    
     // get the specified start state
     robot_state::RobotState start_state = planning_scene->getCurrentState();
     robot_state::robotStateMsgToRobotState(planning_scene->getTransforms(), req.start_state, start_state);
-
-    // if the start state is otherwise valid but does not meet path constraints
+    
+     // if the start state is otherwise valid but does not meet path constraints
     if (planning_scene->isStateValid(start_state, req.group_name) &&
         !planning_scene->isStateValid(start_state, req.path_constraints, req.group_name))
     {
@@ -83,6 +83,7 @@ public:
       // index information from that call
       std::vector<std::size_t> added_path_index_temp;
       added_path_index_temp.swap(added_path_index);
+
       bool solved1 = planner(planning_scene, req2, res2);
       added_path_index_temp.swap(added_path_index);
 

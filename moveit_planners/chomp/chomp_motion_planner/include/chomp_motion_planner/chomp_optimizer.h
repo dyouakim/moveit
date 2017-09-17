@@ -45,6 +45,8 @@
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/collision_distance_field/collision_robot_hybrid.h>
 #include <moveit/collision_distance_field/collision_world_hybrid.h>
+#include <moveit/collision_distance_field/collision_world_distance_field.h>
+#include <moveit/collision_distance_field/collision_robot_distance_field.h>
 
 #include <Eigen/Core>
 
@@ -71,6 +73,16 @@ public:
   bool isInitialized() const
   {
     return initialized_;
+  }
+
+  int getIterations()
+  {
+    return last_improvement_iteration_;
+  }
+
+  double getCost()
+  {
+    return best_group_trajectory_cost_;
   }
 
 private:

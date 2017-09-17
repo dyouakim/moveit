@@ -77,7 +77,8 @@ ChompOptimizer::ChompOptimizer(ChompTrajectory* trajectory, const planning_scene
 
   //  hy_world_ = dynamic_cast<const
   //  collision_detection::CollisionWorldHybrid*>(planning_scene->getCollisionWorld().get());
-  hy_world_ = dynamic_cast<const collision_detection::CollisionWorldHybrid*>(
+  
+    hy_world_ = dynamic_cast<const collision_detection::CollisionWorldHybrid*>(
       planning_scene->getCollisionWorld(planning_scene->getActiveCollisionDetectorName()).get());
   if (!hy_world_)
   {
@@ -111,19 +112,21 @@ void ChompOptimizer::initialize()
   ros::WallTime wt = ros::WallTime::now();
   hy_world_->getCollisionGradients(req, res, *hy_robot_->getCollisionRobotDistanceField().get(), state_,
                                    &planning_scene_->getAllowedCollisionMatrix(), gsr_);
-  ROS_INFO_STREAM("First coll check took " << (ros::WallTime::now() - wt));
+
+
+  
   num_collision_points_ = 0;
   for (size_t i = 0; i < gsr_->gradients_.size(); i++)
   {
     num_collision_points_ += gsr_->gradients_[i].gradients.size();
   }
 
+  ROS_WARN_STREAM("Number of collision points "<<num_collision_points_);
   // set up the joint costs:
   joint_costs_.reserve(num_joints_);
 
   double max_cost_scale = 0.0;
-
-  joint_model_group_ = planning_scene_->getRobotModel()->getJointModelGroup(planning_group_);
+   joint_model_group_ = planning_scene_->getRobotModel()->getJointModelGroup(planning_group_);
 
   const std::vector<const moveit::core::JointModel*> joint_models = joint_model_group_->getActiveJointModels();
   for (size_t i = 0; i < joint_models.size(); i++)
@@ -141,13 +144,12 @@ void ChompOptimizer::initialize()
     if (max_cost_scale < cost_scale)
       max_cost_scale = cost_scale;
   }
-
   // scale the smoothness costs
   for (int i = 0; i < num_joints_; i++)
   {
     joint_costs_[i].scale(max_cost_scale);
   }
-
+  
   // allocate memory for matrices:
   smoothness_increments_ = Eigen::MatrixXd::Zero(num_vars_free_, num_joints_);
   collision_increments_ = Eigen::MatrixXd::Zero(num_vars_free_, num_joints_);
@@ -179,7 +181,7 @@ void ChompOptimizer::initialize()
   point_is_in_collision_.resize(num_vars_all_, std::vector<int>(num_collision_points_));
 
   last_improvement_iteration_ = -1;
-
+ 
   // HMC initialization:
   momentum_ = Eigen::MatrixXd::Zero(num_vars_free_, num_joints_);
   random_momentum_ = Eigen::MatrixXd::Zero(num_vars_free_, num_joints_);
@@ -191,22 +193,23 @@ void ChompOptimizer::initialize()
     multivariate_gaussian_.push_back(
         MultivariateGaussian(Eigen::VectorXd::Zero(num_vars_free_), joint_costs_[i].getQuadraticCostInverse()));
   }
-
+   
   std::map<std::string, std::string> fixed_link_resolution_map;
   for (int i = 0; i < num_joints_; i++)
   {
     joint_names_.push_back(joint_model_group_->getActiveJointModels()[i]->getName());
-    // ROS_INFO("Got joint %s", joint_names_[i].c_str());
     registerParents(joint_model_group_->getActiveJointModels()[i]);
     fixed_link_resolution_map[joint_names_[i]] = joint_names_[i];
   }
-
+   
   for (size_t i = 0; i < joint_model_group_->getFixedJointModels().size(); i++)
   {
     const moveit::core::JointModel* model = joint_model_group_->getFixedJointModels()[i];
-    fixed_link_resolution_map[model->getName()] = model->getParentLinkModel()->getParentJointModel()->getName();
+    if(model->getParentLinkModel())
+      fixed_link_resolution_map[model->getName()] = model->getParentLinkModel()->getParentJointModel()->getName();
   }
-
+  
+  
   // TODO - is this just the joint_roots_?
   for (size_t i = 0; i < joint_model_group_->getUpdatedLinkModels().size(); i++)
   {
@@ -239,7 +242,7 @@ void ChompOptimizer::initialize()
           parent_model->getName();
     }
   }
-
+  
   // for(map<string, map<string, bool> >::iterator it = joint_parent_map_.begin(); it != joint_parent_map_.end(); it++)
   // {
   //   stringstream ss;
@@ -332,7 +335,6 @@ void ChompOptimizer::optimize()
   std::vector<double> costs(costWindow, 0.0);
   double minimaThreshold = 0.05;
   bool should_break_out = false;
-
   // if(parameters_->getAnimatePath())
   // {
   //   animatePath();
@@ -348,7 +350,7 @@ void ChompOptimizer::optimize()
     double sCost = getSmoothnessCost();
     double cost = cCost + sCost;
 
-    // ROS_INFO_STREAM("Collision cost " << cCost << " smoothness cost " << sCost);
+    ROS_INFO_STREAM("Collision cost " << cCost << " smoothness cost " << sCost);
 
     // if(parameters_->getAddRandomness() && currentCostIter != -1)
     // {
@@ -408,10 +410,14 @@ void ChompOptimizer::optimize()
       if (isCurrentTrajectoryMeshToMeshCollisionFree())
       {
         num_collision_free_iterations_ = 0;
-        ROS_INFO("Chomp Got mesh to mesh safety at iter %d. Breaking out early.", iteration_);
+        ROS_INFO_STREAM("Chomp Got mesh to mesh safety at iter "<< iteration_<<" Breaking out early.");
         is_collision_free_ = true;
         iteration_++;
         should_break_out = true;
+      }
+      else
+      {
+        ROS_ERROR_STREAM("Not collision free ");
       }
       // } else if(safety == CollisionProximitySpace::InCollisionSafe) {
 
@@ -575,7 +581,9 @@ bool ChompOptimizer::isCurrentTrajectoryMeshToMeshCollisionFree() const
   }
   moveit_msgs::RobotState start_state_msg;
   moveit::core::robotStateToRobotStateMsg(start_state_, start_state_msg);
+
   return planning_scene_->isPathValid(start_state_msg, traj);
+
 }
 
 // CollisionProximitySpace::TrajectorySafety ChompOptimizer::checkCurrentIterValidity()
@@ -783,7 +791,7 @@ double ChompOptimizer::getCollisionCost()
       worst_collision_cost_state_ = i;
     }
   }
-
+  ROS_ERROR_STREAM("Computed collision cost is "<<collision_cost);
   return parameters_->getObstacleCostWeight() * collision_cost;
 }
 

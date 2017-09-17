@@ -9,13 +9,13 @@ benchmark_config:
     warehouse:
         host: 127.0.0.1
         port: 33829
-        scene_name: Kitchen1     # Required
+        scene_name: bookshelves     # Required
     parameters:
-        name: KitchenPick1
+        name: kitchenPick1
         runs: 50
         group: manipulator       # Required
         timeout: 10.0
-        output_directory: /tmp/moveit_benchmarks/
+        output_directory: /home/dyouakim/catkin_ws/src/moveit/moveit_ros/benchmarks/benchmark_output/
         queries: Pick1
         start_states: Start1
     planners:
@@ -24,3 +24,6 @@ benchmark_config:
             - RRTConnectkConfigDefault
             - BKPIECEkConfigDefault
             - KPIECEkConfigDefault
+        - plugin: chomp_interface/CHOMPPlanner
+          planners:
+            - CHOMP

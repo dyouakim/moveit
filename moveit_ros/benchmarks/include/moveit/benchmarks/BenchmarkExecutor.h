@@ -47,14 +47,30 @@
 #include <moveit/warehouse/constraints_storage.h>
 #include <moveit/warehouse/trajectory_constraints_storage.h>
 #include <moveit/planning_interface/planning_interface.h>
+#include <moveit/ompl_interface/model_based_planning_context.h>
+
+#include <moveit/robot_state/conversions.h>
 #include <warehouse_ros/database_loader.h>
 #include <pluginlib/class_loader.h>
 
+#include <moveit_msgs/GetPositionIK.h>
+#include <moveit_msgs/GetPositionFK.h>
+#include <moveit_msgs/DisplayTrajectory.h>
 #include <map>
 #include <vector>
 #include <string>
 #include <boost/function.hpp>
 #include <memory>
+#include <fstream>
+#include <iostream>
+#include <iterator>
+#include <algorithm>
+
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/date_time/posix_time/posix_time_io.hpp>
+
+#include <geometric_shapes/shape_operations.h>
+
 
 namespace moveit_ros_benchmarks
 {
@@ -92,10 +108,9 @@ public:
   /// Definition of a post-run benchmark event function.  Invoked immediately after each planner calls solve().
   typedef boost::function<void(const moveit_msgs::MotionPlanRequest& request,
                                const planning_interface::MotionPlanDetailedResponse& response,
-                               PlannerRunData& run_data)>
-      PostRunEventFunction;
+                               PlannerRunData& run_data)> PostRunEventFunction;
 
-  BenchmarkExecutor(const std::string& robot_description_param = "robot_description");
+  BenchmarkExecutor(std::string nodeNamespace, const std::string& robot_description_param = "robot_description");
   virtual ~BenchmarkExecutor();
 
   // Initialize the benchmark executor by loading planning pipelines from the
@@ -142,7 +157,7 @@ protected:
                                     std::vector<BenchmarkRequest>& queries);
 
   virtual void collectMetrics(PlannerRunData& metrics, const planning_interface::MotionPlanDetailedResponse& mp_res,
-                              bool solved, double total_time);
+                              bool solved, double total_time, std::ofstream &metricsFile, std::ofstream &distToObstFile, std::ofstream &trajectoryFile, std::ofstream &eeFile, std::ofstream &jointsDistFile);
 
   virtual void writeOutput(const BenchmarkRequest& brequest, const std::string& start_time, double benchmark_duration);
 
@@ -160,10 +175,10 @@ protected:
   bool loadPlanningScene(const std::string& scene_name, moveit_msgs::PlanningScene& scene_msg);
 
   /// Load all states matching the given regular expression from the warehouse
-  bool loadStates(const std::string& regex, std::vector<StartState>& start_states);
+  bool loadStates(const std::vector<std::string>& regex, std::vector<StartState>& start_states);
 
   /// Load all constraints matching the given regular expression from the warehouse
-  bool loadPathConstraints(const std::string& regex, std::vector<PathConstraints>& constraints);
+  bool loadPathConstraints(const std::vector<std::string>& regex, std::vector<PathConstraints>& constraints);
 
   /// Load all trajectory constraints from the warehouse that match the given regular expression
   bool loadTrajectoryConstraints(const std::string& regex, std::vector<TrajectoryConstraints>& constraints);
@@ -179,6 +194,12 @@ protected:
   /// Execute the given motion plan request on the set of planners for the set number of runs
   void runBenchmark(moveit_msgs::MotionPlanRequest request,
                     const std::map<std::string, std::vector<std::string>>& planners, int runs);
+
+void updateCollisionMatrixForGraspingObject(std::string objectID);
+
+void planningSceneCallback(const moveit_msgs::PlanningSceneConstPtr& planningSceneUpdate);
+
+bool addConnector(geometry_msgs::Pose objectPose, bool first);
 
   planning_scene_monitor::PlanningSceneMonitor* psm_;
   moveit_warehouse::PlanningSceneStorage* pss_;
@@ -203,6 +224,12 @@ protected:
   std::vector<PlannerCompletionEventFunction> planner_completion_fns_;
   std::vector<QueryStartEventFunction> query_start_fns_;
   std::vector<QueryCompletionEventFunction> query_end_fns_;
+  ros::NodeHandle nh_;
+  ros::ServiceClient service_client, fk_service_client ;
+  ros::Publisher planningScenePub_, attachedCollisionObject_pub, displaypathPub_;
+  ros::Subscriber planningSceneUpdateSub_;
+  std::string fileInfo;
+  bool firstConnector;
 };
 }
 

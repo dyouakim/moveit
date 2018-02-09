@@ -153,9 +153,10 @@ void RenderShapes::renderShape(Ogre::SceneNode* node, const shapes::Shape* s, co
     case shapes::OCTREE:
     {
       OcTreeRenderPtr octree(new OcTreeRender(static_cast<const shapes::OcTree*>(s)->octree, octree_voxel_rendering,
-                                              octree_color_mode, 0u, context_->getSceneManager(), node));
+                                              octree_color_mode, 0u, context_->getSceneManager(),p, node));
 
       octree_voxel_grids_.push_back(octree);
+
     }
     break;
 
@@ -163,7 +164,7 @@ void RenderShapes::renderShape(Ogre::SceneNode* node, const shapes::Shape* s, co
       break;
   }
 
-  if (ogre_shape)
+  if (ogre_shape )
   {
     ogre_shape->setColor(color.r_, color.g_, color.b_, alpha);
     Ogre::Vector3 position(p.translation().x(), p.translation().y(), p.translation().z());
@@ -178,6 +179,7 @@ void RenderShapes::renderShape(Ogre::SceneNode* node, const shapes::Shape* s, co
                                   Ogre::Vector3(1.0, 0.0, 0.0));
       orientation = orientation * fix;
     }
+
 
     ogre_shape->setPosition(position);
     ogre_shape->setOrientation(orientation);

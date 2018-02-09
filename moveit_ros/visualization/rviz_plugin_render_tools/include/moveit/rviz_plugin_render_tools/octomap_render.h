@@ -43,6 +43,10 @@
 
 #include <moveit/rviz_plugin_render_tools/octomap_render.h>
 
+#include <tf_conversions/tf_eigen.h>
+#include <eigen_conversions/eigen_msg.h>
+#include <ros/console.h>
+
 namespace octomap
 {
 class OcTree;
@@ -74,7 +78,7 @@ class OcTreeRender
 public:
   OcTreeRender(const std::shared_ptr<const octomap::OcTree>& octree, OctreeVoxelRenderMode octree_voxel_rendering,
                OctreeVoxelColorMode octree_color_mode, std::size_t max_octree_depth, Ogre::SceneManager* scene_manager,
-               Ogre::SceneNode* parent_node);
+               const Eigen::Affine3d& p, Ogre::SceneNode* parent_node);
   virtual ~OcTreeRender();
 
 private:

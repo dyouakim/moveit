@@ -44,6 +44,7 @@
 
 #include <rviz/ogre_helpers/point_cloud.h>
 
+#include <ros/console.h>
 namespace moveit_rviz_plugin
 {
 typedef std::vector<rviz::PointCloud::Point> VPoint;
@@ -51,7 +52,7 @@ typedef std::vector<VPoint> VVPoint;
 
 OcTreeRender::OcTreeRender(const std::shared_ptr<const octomap::OcTree>& octree,
                            OctreeVoxelRenderMode octree_voxel_rendering, OctreeVoxelColorMode octree_color_mode,
-                           std::size_t max_octree_depth, Ogre::SceneManager* scene_manager,
+                           std::size_t max_octree_depth, Ogre::SceneManager* scene_manager,const Eigen::Affine3d& p,
                            Ogre::SceneNode* parent_node = NULL)
   : octree_(octree), colorFactor_(0.8)
 {
@@ -84,6 +85,15 @@ OcTreeRender::OcTreeRender(const std::shared_ptr<const octomap::OcTree>& octree,
   }
 
   octreeDecoding(octree, octree_voxel_rendering, octree_color_mode);
+
+    Ogre::Vector3 position(p.translation().x(), p.translation().y(), p.translation().z());
+    Eigen::Quaterniond q(p.rotation());
+    Ogre::Quaternion orientation(q.w(), q.x(), q.y(), q.z());
+    
+    scene_node_->setOrientation(orientation);
+    scene_node_->setPosition(position);
+  
+
 }
 
 OcTreeRender::~OcTreeRender()
@@ -156,14 +166,18 @@ void OcTreeRender::octreeDecoding(const std::shared_ptr<const octomap::OcTree>& 
   octree->getMetricMax(maxX, maxY, maxZ);
 
   unsigned int render_mode_mask = static_cast<unsigned int>(octree_voxel_rendering);
-
+  int occupied = 0 , all = 0;     
   size_t pointCount = 0;
   {
     // traverse all leafs in the tree:
     for (octomap::OcTree::iterator it = octree->begin(octree_depth_), end = octree->end(); it != end; ++it)
     {
       bool display_voxel = false;
-
+      octomath::Vector3 point = octree->keyToCoord(it.getKey());
+      ROS_WARN_STREAM("Node status "<<octree->isNodeOccupied(*it)<<" with coord "<<point.x()<<","<<point.y()<<","<<point.z());
+      all++;
+      if(octree->isNodeOccupied(*it))
+        occupied++;
       // the left part evaluates to 1 for free voxels and 2 for occupied voxels
       if (((int)octree->isNodeOccupied(*it) + 1) & render_mode_mask)
       {
@@ -171,7 +185,7 @@ void OcTreeRender::octreeDecoding(const std::shared_ptr<const octomap::OcTree>& 
         bool allNeighborsFound = true;
 
         octomap::OcTreeKey key;
-        octomap::OcTreeKey nKey = it.getKey();
+        octomap::OcTreeKey nKey = it.getKey();           
 
         for (key[2] = nKey[2] - 1; allNeighborsFound && key[2] <= nKey[2] + 1; ++key[2])
         {
@@ -182,7 +196,6 @@ void OcTreeRender::octreeDecoding(const std::shared_ptr<const octomap::OcTree>& 
               if (key != nKey)
               {
                 octomap::OcTreeNode* node = octree->search(key);
-
                 // the left part evaluates to 1 for free voxels and 2 for occupied voxels
                 if (!(node && (((int)octree->isNodeOccupied(node)) + 1) & render_mode_mask))
                 {
@@ -197,6 +210,7 @@ void OcTreeRender::octreeDecoding(const std::shared_ptr<const octomap::OcTree>& 
         display_voxel |= !allNeighborsFound;
       }
 
+      
       if (display_voxel)
       {
         rviz::PointCloud::Point newPoint;
@@ -228,6 +242,8 @@ void OcTreeRender::octreeDecoding(const std::shared_ptr<const octomap::OcTree>& 
       }
     }
   }
+
+  ROS_ERROR_STREAM("Nodes occupied "<<occupied<<", all "<<all);
 
   for (size_t i = 0; i < octree_depth_; ++i)
   {

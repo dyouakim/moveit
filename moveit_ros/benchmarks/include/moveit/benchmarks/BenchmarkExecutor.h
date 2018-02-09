@@ -201,6 +201,8 @@ void planningSceneCallback(const moveit_msgs::PlanningSceneConstPtr& planningSce
 
 bool addConnector(geometry_msgs::Pose objectPose, bool first);
 
+moveit_msgs::MotionPlanRequest modifyStartState(moveit_msgs::MotionPlanRequest& request,double run, std::vector<double> posPerRun);
+
   planning_scene_monitor::PlanningSceneMonitor* psm_;
   moveit_warehouse::PlanningSceneStorage* pss_;
   moveit_warehouse::PlanningSceneWorldStorage* psws_;

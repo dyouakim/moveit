@@ -834,6 +834,67 @@ bool BenchmarkExecutor::loadTrajectoryConstraints(const std::string& regex,
   return true;
 }
 
+moveit_msgs::MotionPlanRequest BenchmarkExecutor::modifyStartState(moveit_msgs::MotionPlanRequest& request,double run, std::vector<double> posPerRun)
+{
+  
+ 
+  moveit_msgs::MotionPlanRequest new_req;
+  new_req = request;
+  //ROS_WARN_STREAM("Original start state for run "<<((double)(run/20)) <<" is "<<request.start_state);
+  new_req.request_id = run;
+  bool invalid = false;
+  double number = 0.0;
+  if(run!=0)
+  {
+    
+    /*do
+    {
+      std::random_device rd;
+      std::default_random_engine generator(rd());
+      std::uniform_real_distribution<double> distribution(-1.0,1.0);
+      number = distribution(generator);
+      ROS_ERROR_STREAM("The random value is "<<number);
+      new_req.start_state.joint_state.position[0] = request.start_state.joint_state.position[0] + (0.2*number);
+      new_req.start_state.joint_state.position[1] = request.start_state.joint_state.position[1] + (0.2*number);
+      new_req.start_state.joint_state.position[2] = request.start_state.joint_state.position[2] + (0.2*number);
+      new_req.start_state.joint_state.position[3] = request.start_state.joint_state.position[3] + (0.2*number);
+      new_req.start_state.joint_state.position[4] = request.start_state.joint_state.position[4] + (0.1*number);
+      new_req.start_state.joint_state.position[5] = request.start_state.joint_state.position[5] + (0.1*number);
+      new_req.start_state.joint_state.position[6] = request.start_state.joint_state.position[6] + (0.1*number);
+      new_req.start_state.joint_state.position[7] = request.start_state.joint_state.position[7] + (0.2*number);
+      if(new_req.start_state.joint_state.position[0]<6 && new_req.start_state.joint_state.position[0]>-3
+        && new_req.start_state.joint_state.position[1]<6 && new_req.start_state.joint_state.position[1]>-3
+        && new_req.start_state.joint_state.position[2]<5 && new_req.start_state.joint_state.position[2]>1.5
+        && new_req.start_state.joint_state.position[4]<1.53 && new_req.start_state.joint_state.position[4]>-0.42
+        && new_req.start_state.joint_state.position[5]<1.44 && new_req.start_state.joint_state.position[5]>-0.05
+        && new_req.start_state.joint_state.position[6]<0.55 && new_req.start_state.joint_state.position[6]>-1.21
+        && new_req.start_state.joint_state.position[7]<3.12 && new_req.start_state.joint_state.position[7]>-3.12 )
+      {
+        ROS_ERROR_STREAM("valid change");
+        break;
+        }
+      else
+      {
+        ROS_ERROR_STREAM("invalid change");
+        invalid = true;
+      }
+      
+    }while(invalid);*/
+
+    new_req.start_state.joint_state.position = posPerRun;
+    moveit_msgs::PlanningScene modifiedSceneMsg;
+    planning_scene_->getPlanningSceneMsg(modifiedSceneMsg);
+
+    modifiedSceneMsg.robot_state = new_req.start_state;
+    ROS_WARN_STREAM("The new modfieid start is "<<new_req.start_state.joint_state<<" for run "<<run);
+    modifiedSceneMsg.is_diff = true;
+    planning_scene_->setPlanningSceneDiffMsg(modifiedSceneMsg);
+    planningScenePub_.publish(modifiedSceneMsg);
+    sleep(2);
+  }
+
+  return new_req;
+}
 
 void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request,
                                      const std::map<std::string, std::vector<std::string>>& planners, int runs)
@@ -856,8 +917,36 @@ void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request,
       num_planners += it->second.size();
     boost::progress_display progress(num_planners * runs, std::cout);
 
-  for (int j = 0; j < runs; ++j)
-  {
+
+   /* std::vector<std::vector<double>> posPerRun;
+    posPerRun.resize(runs);
+    for(int m=0;m<runs;m++)
+      posPerRun[m].resize(8,0);
+    std::copy(request.start_state.joint_state.position.begin(), request.start_state.joint_state.position.end(), posPerRun[0].begin());
+    posPerRun[1]= {-2.03468,-0.0346779,3.46532,-0.0346779,-0.0173389,-0.0173389,-0.0173389,-0.0346779};
+    posPerRun[2]={-0.0843788,-0.0843788,2.91562,-0.0843788,-0.0421894,-0.0421894,-0.0421894,-0.0843788};
+    posPerRun[3]={-1.98761,0.0123916,3.51239,0.0123916,0.00619581,0.00619581,0.00619581,0.0123916};
+    posPerRun[4]={-1.87396,0.126043,3.62604,0.126043,0.0630216,0.0630216,0.0630216,0.126043};
+    posPerRun[5]={-1.95036,0.0496365,3.54964,0.0496365,0.0248183,0.0248183,0.0248183,0.0496365};
+    posPerRun[6]={-2.03943,-0.0394268,3.46057,-0.0394268,-0.0197134,-0.0197134,-0.0197134,-0.0394268};
+    posPerRun[7]={-2.07243,-0.0724318,3.42757,-0.0724318,-0.0362159,-0.0362159,-0.0362159,-0.0724318};
+    posPerRun[8]={-2.0561,-0.056105,3.4439,-0.056105,-0.0280525,-0.0280525,-0.0280525,-0.056105};
+    posPerRun[9]={-1.86098,0.139017,3.63902,0.139017,0.0695083,0.0695083,0.0695083,0.139017};
+    posPerRun[10]={-2.09882,-0.0988248,3.40118,-0.0988248,-0.0494124,-0.0494124,-0.0494124,-0.0988248};
+    posPerRun[11]={-1.80595,0.194048,3.69405,0.194048,0.0970241,0.0970241,0.0970241,0.194048};
+    posPerRun[12]={-1.81006,0.189945,3.68994,0.189945,0.0949723,0.0949723,0.0949723,0.189945};
+    posPerRun[13]={-2.00611,-0.00610926,3.49389,-0.00610926,-0.00305463,-0.00305463,-0.00305463,-0.00610926};
+    posPerRun[14]={-1.9313,0.0687041,3.5687,0.0687041,0.034352,0.034352,0.034352,0.0687041};
+    posPerRun[15]={-1.88272,0.117283,3.61728,0.117283,0.0586416,0.0586416,0.0586416,0.117283};
+    posPerRun[16]={-2.06239,-0.0623916,3.43761,-0.0623916,-0.0311958,-0.0311958,-0.0311958,-0.0623916};
+    posPerRun[17]={-2.07868,-0.0786832,3.42132,-0.0786832,-0.0393416,-0.0393416,-0.0393416,-0.0786832};
+    posPerRun[18]={-1.96977,0.0302265,3.53023,0.0302265,0.0151133,0.0151133,0.0151133,0.0302265};
+    posPerRun[19]={-1.88196,0.118036,3.61804,0.118036,0.0590178,0.0590178,0.0590178,0.118036};
+*/
+    for (int j = 0; j < runs; ++j)
+    {
+    ROS_ERROR_STREAM("in run loop");
+
     PlannerBenchmarkData planner_data(runs);
     std::vector<BenchmarkRequest> queries;
     //For consistency Test add the connector before planning
@@ -869,40 +958,44 @@ void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request,
     connectorPose.orientation.z = q.z;
     connectorPose.orientation.w = q.w;
     
+
+
+     moveit_msgs::MotionPlanRequest modif_req = request;//modifyStartState(request,j, posPerRun[j]);
     //q = tf::createQuaternionMsgFromRollPitchYaw(1.57,0,0);
-    request.goal_constraints[0].position_constraints[0].constraint_region.primitive_poses[0].orientation = q;
+    modif_req.goal_constraints[0].position_constraints[0].constraint_region.primitive_poses[0].orientation = q;
     // Iterate through all planner plugins
     for (std::map<std::string, std::vector<std::string>>::const_iterator it = planners.begin(); it != planners.end();
          ++it)
     {
+      ROS_ERROR_STREAM("in map loop");
       // Iterate through all planners associated with the plugin
       for (std::size_t i = 0; i < it->second.size(); ++i)
       {
         // This container stores all of the benchmark data for this planner
-        
-        request.planner_id = it->second[i];
-        if(request.goal_constraints[0].joint_constraints.size()>0)
-            request.goal_constraints[0].joint_constraints.clear();
-        if(request.planner_id=="stomp.STOMP" || request.planner_id=="chomp.CHOMP")
+         ROS_ERROR_STREAM("in second loop");
+        modif_req.planner_id = it->second[i];
+        if(modif_req.goal_constraints[0].joint_constraints.size()>0)
+            modif_req.goal_constraints[0].joint_constraints.clear();
+        if(modif_req.planner_id=="stomp.STOMP" || modif_req.planner_id=="chomp.CHOMP")
         {
           moveit_msgs::PositionConstraint position;
           moveit_msgs::OrientationConstraint orientation;
           
          
           
-            if(request.goal_constraints[0].position_constraints.size()>0)
+            if(modif_req.goal_constraints[0].position_constraints.size()>0)
             {
-              position = request.goal_constraints[0].position_constraints[0];
+              position = modif_req.goal_constraints[0].position_constraints[0];
               //request.goal_constraints[k].position_constraints.clear();
               ROS_WARN_STREAM("Pos "<<position.constraint_region.primitive_poses[0].position.x
             <<","<<position.constraint_region.primitive_poses[0].position.y
             <<","<<position.constraint_region.primitive_poses[0].position.z);
            
             }
-            if(request.goal_constraints[0].orientation_constraints.size()>0)
+            if(modif_req.goal_constraints[0].orientation_constraints.size()>0)
             {
-              orientation = request.goal_constraints[0].orientation_constraints[0];
-              //request.goal_constraints[k].orientation_constraints.clear();
+              orientation = modif_req.goal_constraints[0].orientation_constraints[0];
+              //modif_req.goal_constraints[k].orientation_constraints.clear();
               double roll,pitch,yaw;
               const tf::Quaternion q1(orientation.orientation.x,orientation.orientation.y,orientation.orientation.z,orientation.orientation.w);
               tf::Matrix3x3(q1).getRPY(roll,pitch,yaw);
@@ -913,7 +1006,7 @@ void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request,
             moveit_msgs::GetPositionIK::Response ik_res;
             
             
-            ik_req.ik_request.group_name = request.group_name;
+            ik_req.ik_request.group_name = modif_req.group_name;
             geometry_msgs::PoseStamped pose;
             pose.header.frame_id="world";
             pose.header.stamp = ros::Time::now();
@@ -925,7 +1018,7 @@ void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request,
             ik_req.ik_request.pose_stamped = pose;
             ros::Duration dur(20,0);
             ik_req.ik_request.timeout = dur;
-            ik_req.ik_request.robot_state = request.start_state;
+            ik_req.ik_request.robot_state = modif_req.start_state;
             ik_req.ik_request.avoid_collisions=1;
             ik_req.ik_request.attempts=20;
             service_client.call(ik_req,ik_res);
@@ -938,25 +1031,25 @@ void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request,
                 moveit_msgs::JointConstraint joints;
                 joints.joint_name = ik_res.solution.joint_state.name[j];
                 joints.position = ik_res.solution.joint_state.position[j];
-                request.goal_constraints[0].joint_constraints.push_back(joints);
+                modif_req.goal_constraints[0].joint_constraints.push_back(joints);
               }
 
-              /*request.goal_constraints[0].joint_constraints[0].position=1.54;
-              request.goal_constraints[0].joint_constraints[1].position=-0.4;
-              request.goal_constraints[0].joint_constraints[2].position=3.47;
-              request.goal_constraints[0].joint_constraints[3].position=0.066;
-              request.goal_constraints[0].joint_constraints[4].position=0.8;
-              request.goal_constraints[0].joint_constraints[5].position=-0.5;
-              request.goal_constraints[0].joint_constraints[6].position=-0.46;
-              request.goal_constraints[0].joint_constraints[7].position=-0.8;*/
-              ROS_WARN_STREAM(request.goal_constraints[0].joint_constraints.size()<<","<<request.goal_constraints[0].position_constraints.size()<<","
-          <<request.goal_constraints[0].orientation_constraints.size());
+              /*modif_req.goal_constraints[0].joint_constraints[0].position=1.54;
+              modif_req.goal_constraints[0].joint_constraints[1].position=-0.4;
+              modif_req.goal_constraints[0].joint_constraints[2].position=3.47;
+              modif_req.goal_constraints[0].joint_constraints[3].position=0.066;
+              modif_req.goal_constraints[0].joint_constraints[4].position=0.8;
+              modif_req.goal_constraints[0].joint_constraints[5].position=-0.5;
+              modif_req.goal_constraints[0].joint_constraints[6].position=-0.46;
+              modif_req.goal_constraints[0].joint_constraints[7].position=-0.8;*/
+              ROS_WARN_STREAM(modif_req.goal_constraints[0].joint_constraints.size()<<","<<modif_req.goal_constraints[0].position_constraints.size()<<","
+          <<modif_req.goal_constraints[0].orientation_constraints.size());
             }
         }
 
-        request.max_velocity_scaling_factor = 1;
+        modif_req.max_velocity_scaling_factor = 1;
         BenchmarkRequest query;
-        query.request = request;
+        query.request = modif_req;
         queries.push_back(query);
         
 
@@ -970,34 +1063,34 @@ void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request,
         moveit_msgs::RobotState current;
         moveit::core::robotStateToRobotStateMsg(planning_scene_->getCurrentStateNonConst(),current);
         current.is_diff = true;
-        request.start_state = current; 
+        modif_req.start_state = current; 
 
        
 
        // Planner start events
         for (std::size_t j = 0; j < planner_start_fns_.size(); ++j)
-          planner_start_fns_[j](request, planner_data);
+          planner_start_fns_[j](modif_req, planner_data);
 
-
+        ROS_WARN("before getting the context");
         planning_interface::PlanningContextPtr context =
-            planner_interfaces_[it->first]->getPlanningContext(planning_scene_, request);
+            planner_interfaces_[it->first]->getPlanningContext(planning_scene_, modif_req);
 
             
           // Pre-run events
           for (std::size_t k = 0; k < pre_event_fns_.size(); ++k)
-            pre_event_fns_[k](request);
+            pre_event_fns_[k](modif_req);
           planning_interface::MotionPlanDetailedResponse mp_res;
           ros::WallTime start = ros::WallTime::now();
           bool solved = false;
-          if(request.planner_id=="ompl.Mobile_Manip[RRTstarkConfigDefault]" || request.planner_id=="ompl.Mobile_Manip[PRMstarkConfigDefault]")
+          if(modif_req.planner_id=="ompl.Mobile_Manip[RRTstarkConfigDefault]" || modif_req.planner_id=="ompl.Mobile_Manip[PRMstarkConfigDefault]")
           {
             std::string progressDataFile = "/home/dyouakim/Documents/survey_data/progressOmplBenchmark_";
-            progressDataFile.append(request.planner_id);
+            progressDataFile.append(modif_req.planner_id);
             progressDataFile.append("_");
             progressDataFile.append(std::to_string(j));
             
             std::shared_ptr<ompl_interface::ModelBasedPlanningContext> modelContext = std::dynamic_pointer_cast< ompl_interface::ModelBasedPlanningContext>(context);
-            solved = modelContext->benchmark(request.allowed_planning_time,1,mp_res,progressDataFile);
+            solved = modelContext->benchmark(modif_req.allowed_planning_time,1,mp_res,progressDataFile);
           }
           else
           {
@@ -1006,7 +1099,7 @@ void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request,
           }
 
           double total_time = (ros::WallTime::now() - start).toSec();
-          if(request.planner_id=="ompl.Mobile_Manip[RRTstarkConfigDefault]" || request.planner_id=="ompl.Mobile_Manip[PRMstarkConfigDefault]")
+          if(modif_req.planner_id=="ompl.Mobile_Manip[RRTstarkConfigDefault]" || modif_req.planner_id=="ompl.Mobile_Manip[PRMstarkConfigDefault]")
           {
             total_time-=10;
           }
@@ -1016,25 +1109,25 @@ void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request,
           // Post-run events
           for (std::size_t k = 0; k < post_event_fns_.size(); ++k)
           {
-            post_event_fns_[k](request, mp_res, planner_data[j]);
+            post_event_fns_[k](modif_req, mp_res, planner_data[j]);
           }
 
          
 
           std::string metricsName = "../Documents/survey_data/metrics_";
-          metricsName.append(request.planner_id);
+          metricsName.append(modif_req.planner_id);
           metricsName.append(fileInfo);
           std::string distToObstName = "../Documents/survey_data/distToObst_";
-          distToObstName.append(request.planner_id);
+          distToObstName.append(modif_req.planner_id);
           distToObstName.append(fileInfo);
           std::string plannedTrajName = "../Documents/survey_data/plannedTrajectory_";
-          plannedTrajName.append(request.planner_id);
+          plannedTrajName.append(modif_req.planner_id);
           plannedTrajName.append(fileInfo);
           std::string eeName = "../Documents/survey_data/EE_";
-          eeName.append(request.planner_id);
+          eeName.append(modif_req.planner_id);
           eeName.append(fileInfo);
           std::string jointsDistName = "../Documents/survey_data/jointsDist_";
-          jointsDistName.append(request.planner_id);
+          jointsDistName.append(modif_req.planner_id);
           jointsDistName.append(fileInfo);
 
           std::ofstream metricsFile, trajectoryFile, distToObstFile, eeFile, jointsDistFile;
@@ -1054,16 +1147,18 @@ void BenchmarkExecutor::runBenchmark(moveit_msgs::MotionPlanRequest request,
           ROS_DEBUG("Spent %lf seconds collecting metrics", metrics_time);
           
           ++progress;
-        }
+          ROS_ERROR_STREAM("it size and i "<<options_.getPlannerConfigurations().size());
+       
+      }
 
         // Planner completion events
         for (std::size_t j = 0; j < planner_completion_fns_.size(); ++j)
-          planner_completion_fns_[j](request, planner_data);
+          planner_completion_fns_[j](modif_req, planner_data);
 
          
         benchmark_data_.push_back(planner_data);
-      }
     }
+  }
 }
 
 
@@ -1274,11 +1369,13 @@ void BenchmarkExecutor::collectMetrics(PlannerRunData& metrics,
       ROS_ERROR_STREAM("now is "<<mp_res.description_[j]);
       if(mp_res.description_.size()==1)
       {
+        ROS_ERROR_STREAM("in if "<<mp_res.cost_[j]);
         metricsFile<<process_time<<","<<solved<<","<<correct<<","<<L<<","<<clearance<<","<<smoothness<<","<<p.getWayPointCount()<<","<<mp_res.iterations_[j]<<","<<mp_res.cost_[j]<<std::endl;
       }
       else if((mp_res.description_.size()>1 && j == mp_res.trajectory_.size()-1))
       {
         double totalPlannTimeSampling = 0;
+        ROS_ERROR("in else");
         for(int k=0;k<j;k++)
         {
           totalPlannTimeSampling += mp_res.processing_time_[k];
@@ -1302,6 +1399,7 @@ void BenchmarkExecutor::collectMetrics(PlannerRunData& metrics,
     metrics["process_time REAL"] = boost::lexical_cast<std::string>(process_time);
     metricsFile<<std::endl;
   }
+
 }
 
 void BenchmarkExecutor::writeOutput(const BenchmarkRequest& brequest, const std::string& start_time,

@@ -114,6 +114,7 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
 
   const moveit_msgs::MotionPlanRequest &motion_plan_request =
       planning_scene::PlanningScene::isEmpty(goal->request.start_state) ? goal->request :
+                                          
                                                                           clearRequestStartState(goal->request);
   const moveit_msgs::PlanningScene &planning_scene_diff =
       planning_scene::PlanningScene::isEmpty(goal->planning_options.planning_scene_diff.robot_state) ?
@@ -126,7 +127,7 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
   opt.before_execution_callback_ = boost::bind(&MoveGroupMoveAction::startMoveExecutionCallback, this);
 
   opt.plan_callback_ = boost::bind(&MoveGroupMoveAction::planUsingPlanningPipeline, this, boost::cref(motion_plan_request), _1);
-  opt.repair_plan_callback_ = boost::bind(&MoveGroupMoveAction::repairPlan, this, boost::cref(motion_plan_request), _1, _2);
+  //opt.repair_plan_callback_ = boost::bind(&MoveGroupMoveAction::repairPlan, this, boost::cref(motion_plan_request), _1, _2);
 
   if (goal->planning_options.look_around && context_->plan_with_sensing_)
   {
@@ -159,8 +160,9 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanOnly(const moveit_
       (planning_scene::PlanningScene::isEmpty(goal->planning_options.planning_scene_diff)) ?
           static_cast<const planning_scene::PlanningSceneConstPtr &>(lscene) :
           lscene->diff(goal->planning_options.planning_scene_diff);
-  planning_interface::MotionPlanResponse res;
-  try
+ 
+ planning_interface::MotionPlanResponse res;
+ try
   {
     context_->planning_pipeline_->generatePlan(the_scene, goal->request, res);
 
@@ -180,7 +182,8 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanOnly(const moveit_
   convertToMsg(res.trajectory_, action_res.trajectory_start, action_res.planned_trajectory);
   action_res.error_code = res.error_code_;
   action_res.planning_time = res.planning_time_;
-  action_res.planned_trajectory.ee_pose = res.trajectory_->getEEPath();
+  if(res.error_code_.val== moveit_msgs::MoveItErrorCodes::SUCCESS)
+    action_res.planned_trajectory.ee_pose = res.trajectory_->getEEPath();
 }
 
 bool move_group::MoveGroupMoveAction::planUsingPlanningPipeline(const planning_interface::MotionPlanRequest &req,

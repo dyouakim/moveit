@@ -263,7 +263,7 @@ bool PlacePlan::plan(const planning_scene::PlanningSceneConstPtr& planning_scene
   plan_data->minimize_object_distance_ = false;
   plan_data->max_goal_sampling_attempts_ = std::max(2u, jmg->getDefaultIKAttempts());
   moveit_msgs::AttachedCollisionObject& detach_object_msg = plan_data->diff_attached_object_;
-
+  plan_data->workspace_parameters_ = goal.workspace_parameters;
   // construct the attached object message that will change the world to what it would become after a placement
   detach_object_msg.link_name = attached_body->getAttachedLinkName();
   detach_object_msg.object.id = attached_object_name;

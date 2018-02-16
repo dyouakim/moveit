@@ -78,6 +78,8 @@ struct ManipulationPlanSharedData
 
   moveit_msgs::AttachedCollisionObject diff_attached_object_;
 
+  moveit_msgs::WorkspaceParameters workspace_parameters_;
+
   ros::WallTime timeout_;
 };
 

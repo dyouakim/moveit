@@ -129,6 +129,7 @@ public:
     max_velocity_scaling_factor_ = 1.0;
     max_acceleration_scaling_factor_ = 1.0;
     initializing_constraints_ = false;
+    request_num_ = 0;
 
     if (joint_model_group_->isChain())
     {
@@ -474,13 +475,16 @@ public:
 
   const std::string &getEndEffector() const
   {
+
     if (!end_effector_link_.empty())
     {
       const std::vector<std::string> &possible_eefs =
           getRobotModel()->getJointModelGroup(opt_.group_name_)->getAttachedEndEffectorNames();
       for (std::size_t i = 0; i < possible_eefs.size(); ++i)
-        if (getRobotModel()->getEndEffector(possible_eefs[i])->hasLinkModel(end_effector_link_))
+	{
+	if (getRobotModel()->getEndEffector(possible_eefs[i])->hasLinkModel(end_effector_link_))
           return possible_eefs[i];
+	}
     }
   
     static std::string empty;
@@ -1062,6 +1066,8 @@ public:
     goal.request.allowed_planning_time = allowed_planning_time_;
     goal.request.planner_id = planner_id_;
     goal.request.workspace_parameters = workspace_parameters_;
+    goal.request.request_id = request_num_;
+    request_num_++;
 
     if (considered_start_state_)
       robot_state::robotStateToRobotStateMsg(*considered_start_state_, goal.request.start_state);
@@ -1122,6 +1128,7 @@ public:
     goal.allowed_planning_time = allowed_planning_time_;
     goal.support_surface_name = support_surface_;
     goal.planner_id = planner_id_;
+    goal.workspace_parameters = workspace_parameters_;
     if (!support_surface_.empty())
       goal.allow_gripper_support_collision = true;
 
@@ -1139,6 +1146,8 @@ public:
     goal.allowed_planning_time = allowed_planning_time_;
     goal.support_surface_name = support_surface_;
     goal.planner_id = planner_id_;
+    goal.workspace_parameters = workspace_parameters_;
+
     if (!support_surface_.empty())
       goal.allow_gripper_support_collision = true;
 
@@ -1263,7 +1272,7 @@ private:
   bool can_look_;
   bool can_replan_;
   double replan_delay_;
-
+  int request_num_;
   // joint state goal
   robot_state::RobotStatePtr joint_state_target_;
   const robot_model::JointModelGroup *joint_model_group_;
@@ -1302,6 +1311,7 @@ moveit::planning_interface::MoveGroupInterface::MoveGroupInterface(const std::st
   if (!ros::ok())
     throw std::runtime_error("ROS does not seem to be running");
   impl_ = new MoveGroupInterfaceImpl(Options(group_name), tf ? tf : getSharedTF(), wait_for_servers);
+  
 }
 
 moveit::planning_interface::MoveGroupInterface::MoveGroupInterface(const std::string &group,

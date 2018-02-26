@@ -113,6 +113,10 @@ public:
                        const boost::shared_ptr<tf::Transformer>& tf = boost::shared_ptr<tf::Transformer>(),
                        const std::string& name = "");
 
+  PlanningSceneMonitor(const std::string& robot_description, bool use_grid, moveit_msgs::WorkspaceParameters workspace = moveit_msgs::WorkspaceParameters(),
+                       double res =0, double max_dist = 0, const boost::shared_ptr<tf::Transformer>& tf = boost::shared_ptr<tf::Transformer>(),
+                       const std::string& name = "");
+
   /** @brief Constructor
    *  @param rml A pointer to a kinematic model loader
    *  @param tf A pointer to a tf::Transformer
@@ -387,11 +391,16 @@ public:
   // Called to update the planning scene with a new message.
   bool newPlanningSceneMessage(const moveit_msgs::PlanningScene& scene);
 
+  bool useGrid () {return scene_->useGrid();}
+  void setUseGrid (bool use_grid) {scene_->setUseGrid(use_grid);}
+
 protected:
   /** @brief Initialize the planning scene monitor
    *  @param scene The scene instance to fill with data (an instance is allocated if the one passed in is not allocated)
    */
   void initialize(const planning_scene::PlanningScenePtr& scene);
+
+  void initialize(const planning_scene::PlanningScenePtr& scene, bool use_grid, moveit_msgs::WorkspaceParameters workspace, double res, double max_dist);
 
   /** @brief Configure the collision matrix for a particular scene */
   void configureCollisionMatrix(const planning_scene::PlanningScenePtr& scene);
@@ -438,6 +447,7 @@ protected:
   bool getShapeTransformCache(const std::string& target_frame, const ros::Time& target_time,
                               occupancy_map_monitor::ShapeTransformCache& cache) const;
 
+  
   /// The name of this scene monitor
   std::string monitor_name_;
 

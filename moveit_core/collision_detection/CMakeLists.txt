@@ -10,6 +10,9 @@ add_library(${MOVEIT_LIB_NAME}
   src/collision_world.cpp
   src/world.cpp
   src/world_diff.cpp
+  src/voxel_operations.cpp
+  src/grid_based_world
+
 )
 set_target_properties(${MOVEIT_LIB_NAME} PROPERTIES VERSION ${${PROJECT_NAME}_VERSION})
 

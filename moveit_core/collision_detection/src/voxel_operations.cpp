@@ -412,7 +412,9 @@ bool VoxelizeOcTree(
     for (auto lit = tree->begin_leafs(); lit != tree->end_leafs(); ++lit) {
         if (tree->isNodeOccupied(*lit)) {
             if (lit.getSize() <= res) {
-                voxels.push_back(Eigen::Vector3d(lit.getX(), lit.getY(), lit.getZ()));
+                Eigen::Vector3d p(lit.getX(), lit.getY(), lit.getZ());
+                p = pose * p;
+                voxels.push_back(p);
             } else {
                 double ceil_val = ceil(lit.getSize() / res) * res;
                 for (double x = lit.getX() - ceil_val; x < lit.getX() + ceil_val; x += res) {

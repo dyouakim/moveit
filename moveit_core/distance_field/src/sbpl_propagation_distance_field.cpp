@@ -120,7 +120,6 @@ DistanceMapInterface* SBPLPropagationDistanceField::clone() const
 void SBPLPropagationDistanceField::addPointsToMap(
     const std::vector<Eigen::Vector3d>& points)
 {
-    ROS_WARN("try to add pdf"); 
     EigenSTL::vector_Vector3d pts = toAlignedVector(points);
     m_df.addPointsToField(pts);
 }
@@ -128,7 +127,6 @@ void SBPLPropagationDistanceField::addPointsToMap(
 void SBPLPropagationDistanceField::removePointsFromMap(
     const std::vector<Eigen::Vector3d>& points)
 {
-    ROS_WARN("try to remove pdf");
     EigenSTL::vector_Vector3d pts = toAlignedVector(points);
     m_df.removePointsFromField(pts);
 }
@@ -137,7 +135,6 @@ void SBPLPropagationDistanceField::updatePointsInMap(
     const std::vector<Eigen::Vector3d>& old_points,
     const std::vector<Eigen::Vector3d>& new_points)
 {
-    ROS_WARN("try to update pdf");
     EigenSTL::vector_Vector3d old_pts = toAlignedVector(old_points);
     EigenSTL::vector_Vector3d new_pts = toAlignedVector(new_points);
     m_df.updatePointsInField(old_pts, new_pts);
@@ -201,8 +198,6 @@ void SBPLPropagationDistanceField::worldToGrid(
 EigenSTL::vector_Vector3d SBPLPropagationDistanceField::toAlignedVector(
     const std::vector<Eigen::Vector3d>& vin) const
 {
-    ROS_WARN_STREAM("align vector of size "<<vin.size());
-    
     EigenSTL::vector_Vector3d vout(vin.size());
     std::copy(vin.begin(), vin.end(), vout.begin());
     return vout;

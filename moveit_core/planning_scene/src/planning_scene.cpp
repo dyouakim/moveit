@@ -46,6 +46,7 @@
 #include <eigen_conversions/eigen_msg.h>
 #include <memory>
 #include <set>
+#include <tf_conversions/tf_eigen.h>
 
 namespace planning_scene
 {
@@ -123,7 +124,126 @@ planning_scene::PlanningScene::PlanningScene(const robot_model::RobotModelConstP
                                              collision_detection::WorldPtr world)
   : kmodel_(robot_model), world_(world), world_const_(world)
 {
+  use_grid_ = false;
   initialize();
+}
+
+planning_scene::PlanningScene::PlanningScene(const robot_model::RobotModelConstPtr& robot_model, bool use_grid)
+: kmodel_(robot_model)
+{
+  world_ = collision_detection::WorldPtr(new collision_detection::World());
+  world_const_ = world_;
+  use_grid_ = use_grid;
+  initialize();
+  if(use_grid)
+    ROS_WARN("You have chosen to use a grid-based world, make sure to set its parameters before planning!");
+ 
+}
+
+void planning_scene::PlanningScene::setGridParams(moveit_msgs::WorkspaceParameters& workspace, double resolution, double max_dist)
+{
+  moveit_msgs::OrientedBoundingBox aabb;
+  getPlanningFrameWorkspaceAABB(workspace, aabb);
+  Eigen::Affine3d T_planning_workspace;
+  T_planning_workspace = Eigen::Translation3d(
+            aabb.pose.position.x - 0.5 * aabb.extents.x,
+            aabb.pose.position.y - 0.5 * aabb.extents.y,
+            aabb.pose.position.z - 0.5 * aabb.extents.z);
+    
+  Eigen::Vector3d workspace_pos_in_planning(T_planning_workspace.translation());
+  
+  auto hdf = std::make_shared<sbpl::SBPLPropagationDistanceField>(
+            workspace_pos_in_planning.x(),
+            workspace_pos_in_planning.y(),
+            workspace_pos_in_planning.z(),
+            aabb.extents.x, aabb.extents.y, aabb.extents.z,
+            resolution,
+            max_dist);
+
+
+  sbpl::OccupancyGridPtr grid = std::make_shared<sbpl::OccupancyGrid>(hdf);
+  //grid->setReferenceFrame(getPlanningFrame());
+  world_ = collision_detection::WorldPtr(new collision_detection::GridWorld(*world_const_.get(), grid.get()));
+  
+  world_const_ = world_;
+  setActiveCollisionDetector(collision_detection::CollisionDetectorAllocatorFCL::create());
+}
+
+//Copied from SBPL Planning Context class in order to transform the workspace params 
+//into valid grid params
+bool planning_scene::PlanningScene::getPlanningFrameWorkspaceAABB(
+    const moveit_msgs::WorkspaceParameters& workspace,
+    moveit_msgs::OrientedBoundingBox& aabb)
+{
+
+    if (!knowsFrameTransform(workspace.header.frame_id)) {
+        ROS_ERROR("Frame '%s' is not known to the Planning Scene", workspace.header.frame_id.c_str());
+        return false;
+    }
+    if (!knowsFrameTransform(getPlanningFrame())) {
+        ROS_ERROR("Frame '%s' is not known to the Planning Scene", getPlanningFrame().c_str());
+        return false;
+    }
+    const Eigen::Affine3d& T_scene_workspace =
+            getFrameTransform(workspace.header.frame_id);
+    const Eigen::Affine3d& T_scene_planning =
+            getFrameTransform(getPlanningFrame());
+
+    Eigen::Affine3d T_planning_workspace =
+            T_scene_planning.inverse() * T_scene_workspace;
+
+    // w = workspace
+    Eigen::Vector3d cw[8] = {
+        Eigen::Vector3d(workspace.min_corner.x, workspace.min_corner.y, workspace.min_corner.z),
+        Eigen::Vector3d(workspace.min_corner.x, workspace.min_corner.y, workspace.max_corner.z),
+        Eigen::Vector3d(workspace.min_corner.x, workspace.max_corner.y, workspace.min_corner.z),
+        Eigen::Vector3d(workspace.min_corner.x, workspace.max_corner.y, workspace.max_corner.z),
+        Eigen::Vector3d(workspace.max_corner.x, workspace.min_corner.y, workspace.min_corner.z),
+        Eigen::Vector3d(workspace.max_corner.x, workspace.min_corner.y, workspace.max_corner.z),
+        Eigen::Vector3d(workspace.max_corner.x, workspace.max_corner.y, workspace.min_corner.z),
+        Eigen::Vector3d(workspace.max_corner.x, workspace.max_corner.y, workspace.max_corner.z),
+    };
+
+    // p = planning
+    Eigen::Vector3d cp[8] = {
+        T_planning_workspace * cw[0],
+        T_planning_workspace * cw[1],
+        T_planning_workspace * cw[2],
+        T_planning_workspace * cw[3],
+        T_planning_workspace * cw[4],
+        T_planning_workspace * cw[5],
+        T_planning_workspace * cw[6],
+        T_planning_workspace * cw[7],
+    };
+    Eigen::Vector3d min_planning = cp[0];
+    Eigen::Vector3d max_planning = cp[0];
+    for (int i = 1; i < 8; ++i) {
+        min_planning.x() = std::min(min_planning.x(), cp[i].x());
+        min_planning.y() = std::min(min_planning.y(), cp[i].y());
+        min_planning.z() = std::min(min_planning.z(), cp[i].z());
+
+        max_planning.x() = std::max(max_planning.x(), cp[i].x());
+        max_planning.y() = std::max(max_planning.y(), cp[i].y());
+        max_planning.z() = std::max(max_planning.z(), cp[i].z());
+    }
+
+    const double mid_x = 0.5 * (min_planning.x() + max_planning.x());
+    const double mid_y = 0.5 * (min_planning.y() + max_planning.y());
+    const double mid_z = 0.5 * (min_planning.z() + max_planning.z());
+
+    const double size_x = fabs(max_planning.x() - min_planning.x());
+    const double size_y = fabs(max_planning.y() - min_planning.y());
+    const double size_z = fabs(max_planning.z() - min_planning.z());
+
+    aabb.pose.position.x = mid_x;
+    aabb.pose.position.y = mid_y;
+    aabb.pose.position.z = mid_z;
+    aabb.pose.orientation.w = 1.0;
+    aabb.extents.x = size_x;
+    aabb.extents.y = size_y;
+    aabb.extents.z = size_z;
+
+    return true;
 }
 
 planning_scene::PlanningScene::PlanningScene(const urdf::ModelInterfaceSharedPtr &urdf_model,
@@ -140,7 +260,7 @@ planning_scene::PlanningScene::PlanningScene(const urdf::ModelInterfaceSharedPtr
   kmodel_ = createRobotModel(urdf_model, srdf_model);
   if (!kmodel_)
     throw moveit::ConstructException("Could not create RobotModel");
-
+  use_grid_ = false;
   initialize();
 }
 
@@ -168,8 +288,8 @@ void planning_scene::PlanningScene::initialize()
   const std::vector<srdf::Model::DisabledCollision> &dc = getRobotModel()->getSRDF()->getDisabledCollisionPairs();
   for (std::vector<srdf::Model::DisabledCollision>::const_iterator it = dc.begin(); it != dc.end(); ++it)
     acm_->setEntry(it->link1_, it->link2_, true);
-
-  setActiveCollisionDetector(collision_detection::CollisionDetectorAllocatorFCL::create());
+  if(!use_grid_)
+    setActiveCollisionDetector(collision_detection::CollisionDetectorAllocatorFCL::create());
 }
 
 /* return NULL on failure */
@@ -187,20 +307,39 @@ planning_scene::PlanningScene::PlanningScene(const PlanningSceneConstPtr &parent
 {
   if (!parent_)
     throw moveit::ConstructException("NULL parent pointer for planning scene");
-
+  
   if (!parent_->getName().empty())
     name_ = parent_->getName() + "+";
 
   kmodel_ = parent_->kmodel_;
-
   // maintain a separate world.  Copy on write ensures that most of the object
   // info is shared until it is modified.
-  world_.reset(new collision_detection::World(*parent_->world_));
-  world_const_ = world_;
+  use_grid_ = parent_->use_grid_;
+  
+  if(use_grid_)
+  {
+    ROS_WARN("in child class with grid set to true !");
 
-  // record changes to the world
-  world_diff_.reset(new collision_detection::WorldDiff(world_));
+  
 
+    collision_detection::GridWorld* grid_world = dynamic_cast<  collision_detection::GridWorld*>(parent_->world_.get());
+
+    world_ = collision_detection::WorldPtr(new collision_detection::GridWorld(*grid_world));
+    world_const_ = world_;
+
+    // record changes to the world
+    world_diff_.reset(new collision_detection::WorldDiff(world_));
+    
+  }
+  else
+  {
+    world_.reset(new collision_detection::World(*parent_->world_));
+    world_const_ = world_;
+
+
+    // record changes to the world
+    world_diff_.reset(new collision_detection::WorldDiff(world_));
+  }
   // Set up the same collision detectors as the parent
   for (CollisionDetectorConstIterator it = parent_->collision_.begin(); it != parent_->collision_.end(); ++it)
   {
@@ -220,8 +359,9 @@ planning_scene::PlanningScene::PlanningScene(const PlanningSceneConstPtr &parent
     detector->crobot_unpadded_.reset();
     detector->crobot_unpadded_const_.reset();
   }
+
   setActiveCollisionDetector(parent_->getActiveCollisionDetectorName());
-}
+ }
 
 planning_scene::PlanningScenePtr
 planning_scene::PlanningScene::clone(const planning_scene::PlanningSceneConstPtr &scene)
@@ -284,7 +424,6 @@ void planning_scene::PlanningScene::addCollisionDetector(
 {
   const std::string &name = allocator->getName();
   CollisionDetectorPtr &detector = collision_[name];
-
   if (detector)  // already added this one
     return;
 
@@ -297,6 +436,7 @@ void planning_scene::PlanningScene::addCollisionDetector(
 
   detector->findParent(*this);
 
+  
   detector->cworld_ = detector->alloc_->allocateWorld(world_);
   detector->cworld_const_ = detector->cworld_;
 
@@ -379,7 +519,7 @@ planning_scene::PlanningScene::getCollisionWorld(const std::string &collision_de
              collision_detector_name.c_str(), active_collision_->alloc_->getName().c_str());
     return active_collision_->cworld_const_;
   }
-
+  
   return it->second->cworld_const_;
 }
 
@@ -417,7 +557,16 @@ void planning_scene::PlanningScene::clearDiffs()
     return;
 
   // clear everything, reset the world, record diffs
-  world_.reset(new collision_detection::World(*parent_->world_));
+  if(use_grid_)
+  {
+    collision_detection::GridWorld* grid_world = dynamic_cast<  collision_detection::GridWorld*>(parent_->world_.get());
+    world_.reset(new collision_detection::GridWorld(*grid_world));
+  }
+  else
+  {
+    world_.reset(new collision_detection::World(*parent_->world_));
+
+  }
   world_const_ = world_;
   world_diff_.reset(new collision_detection::WorldDiff(world_));
   if (current_world_object_update_callback_)
@@ -459,7 +608,7 @@ void planning_scene::PlanningScene::pushDiffs(const PlanningScenePtr &scene)
 {
   if (!parent_)
     return;
-
+  
   if (ftf_)
     scene->getTransformsNonConst().setAllTransforms(ftf_->getAllTransforms());
 
@@ -492,22 +641,48 @@ void planning_scene::PlanningScene::pushDiffs(const PlanningScenePtr &scene)
 
   if (world_diff_)
   {
-    for (collision_detection::WorldDiff::const_iterator it = world_diff_->begin(); it != world_diff_->end(); ++it)
+    if(use_grid_)
     {
-      if (it->second == collision_detection::World::DESTROY)
+      collision_detection::GridWorld* grid_world = dynamic_cast<collision_detection::GridWorld*>(scene->world_.get());
+     
+      for (collision_detection::WorldDiff::const_iterator it = world_diff_->begin(); it != world_diff_->end(); ++it)
       {
-        scene->world_->removeObject(it->first);
-        scene->removeObjectColor(it->first);
+        if (it->second == collision_detection::World::DESTROY)
+        {
+          grid_world->removeObject(it->first);
+          scene->removeObjectColor(it->first);
+        }
+        else
+        {
+          const collision_detection::World::Object &obj = *world_->getObject(it->first);
+          grid_world->removeObject(obj.id_);
+          grid_world->addToObject(obj.id_, obj.shapes_, obj.shape_poses_);
+          if (hasObjectColor(it->first))
+            scene->setObjectColor(it->first, getObjectColor(it->first));
+          if (hasObjectType(it->first))
+            scene->setObjectType(it->first, getObjectType(it->first));
+        }
       }
-      else
+    }
+    else
+    {
+      for (collision_detection::WorldDiff::const_iterator it = world_diff_->begin(); it != world_diff_->end(); ++it)
       {
-        const collision_detection::World::Object &obj = *world_->getObject(it->first);
-        scene->world_->removeObject(obj.id_);
-        scene->world_->addToObject(obj.id_, obj.shapes_, obj.shape_poses_);
-        if (hasObjectColor(it->first))
-          scene->setObjectColor(it->first, getObjectColor(it->first));
-        if (hasObjectType(it->first))
-          scene->setObjectType(it->first, getObjectType(it->first));
+        if (it->second == collision_detection::World::DESTROY)
+        {
+          scene->world_->removeObject(it->first);
+          scene->removeObjectColor(it->first);
+        }
+        else
+        {
+          const collision_detection::World::Object &obj = *world_->getObject(it->first);
+          scene->world_->removeObject(obj.id_);
+          scene->world_->addToObject(obj.id_, obj.shapes_, obj.shape_poses_);
+          if (hasObjectColor(it->first))
+            scene->setObjectColor(it->first, getObjectColor(it->first));
+          if (hasObjectType(it->first))
+            scene->setObjectType(it->first, getObjectType(it->first));
+        }
       }
     }
   }
@@ -527,6 +702,8 @@ void planning_scene::PlanningScene::checkCollision(const collision_detection::Co
                                                    const robot_state::RobotState &kstate) const
 {
   // check collision with the world using the padded version
+
+  
   getCollisionWorld()->checkRobotCollision(req, res, *getCollisionRobot(), kstate, getAllowedCollisionMatrix());
 
   if (!res.collision || (req.contacts && res.contacts.size() < req.max_contacts))
@@ -534,6 +711,11 @@ void planning_scene::PlanningScene::checkCollision(const collision_detection::Co
     // do self-collision checking with the unpadded version of the robot
     getCollisionRobotUnpadded()->checkSelfCollision(req, res, kstate, getAllowedCollisionMatrix());
   }
+  std::stringstream ss;
+  getAllowedCollisionMatrix().print(ss);
+  /*logWarn(ss.str().c_str());
+  if(res.collision)
+    ROS_ERROR("COLLISION FOUND!");*/
 }
 
 void planning_scene::PlanningScene::checkSelfCollision(const collision_detection::CollisionRequest &req,
@@ -682,7 +864,9 @@ void planning_scene::PlanningScene::setCollisionObjectUpdateCallback(
 collision_detection::AllowedCollisionMatrix &planning_scene::PlanningScene::getAllowedCollisionMatrixNonConst()
 {
   if (!acm_)
-   acm_.reset(new collision_detection::AllowedCollisionMatrix(parent_->getAllowedCollisionMatrix()));
+  {
+    acm_.reset(new collision_detection::AllowedCollisionMatrix(parent_->getAllowedCollisionMatrix()));
+  }
   return *acm_;
 }
 
@@ -752,6 +936,7 @@ void planning_scene::PlanningScene::getPlanningSceneDiffMsg(moveit_msgs::Plannin
 
   if (world_diff_)
   {
+
     bool do_omap = false;
     for (collision_detection::WorldDiff::const_iterator it = world_diff_->begin(); it != world_diff_->end(); ++it)
     {
@@ -768,6 +953,7 @@ void planning_scene::PlanningScene::getPlanningSceneDiffMsg(moveit_msgs::Plannin
       else
         getPlanningSceneMsgCollisionObject(scene_msg, it->first);
     }
+
     if (do_omap)
       getPlanningSceneMsgOctomap(scene_msg);
   }
@@ -841,7 +1027,9 @@ void planning_scene::PlanningScene::getPlanningSceneMsgCollisionObject(moveit_ms
   if (!co.primitives.empty() || !co.meshes.empty() || !co.planes.empty())
   {
     if (hasObjectType(co.id))
+    {
       co.type = getObjectType(co.id);
+    }
     scene_msg.world.collision_objects.push_back(co);
   }
 }
@@ -894,7 +1082,7 @@ void planning_scene::PlanningScene::getPlanningSceneMsg(moveit_msgs::PlanningSce
 
   // get the octomap
   getPlanningSceneMsgOctomap(scene_msg);
-}
+  }
 
 void planning_scene::PlanningScene::getPlanningSceneMsgObjectColors(moveit_msgs::PlanningScene &scene_msg) const
 {
@@ -1229,12 +1417,13 @@ bool planning_scene::PlanningScene::setPlanningSceneDiffMsg(const moveit_msgs::P
   // process collision object updates
   for (std::size_t i = 0; i < scene_msg.world.collision_objects.size(); ++i)
     result &= processCollisionObjectMsg(scene_msg.world.collision_objects[i]);
-
   // if an octomap was specified, replace the one we have with that one
   if (!scene_msg.world.octomap.octomap.data.empty())
+  {
     processOctomapMsg(scene_msg.world.octomap);
+  }
 
-  return result;
+ return result;
 }
 
 bool planning_scene::PlanningScene::setPlanningSceneMsg(const moveit_msgs::PlanningScene &scene_msg)
@@ -1267,7 +1456,15 @@ bool planning_scene::PlanningScene::setPlanningSceneMsg(const moveit_msgs::Plann
   object_colors_.reset(new ObjectColorMap());
   for (std::size_t i = 0; i < scene_msg.object_colors.size(); ++i)
     setObjectColor(scene_msg.object_colors[i].id, scene_msg.object_colors[i].color);
-  world_->clearObjects();
+
+  if(use_grid_)
+  {
+    collision_detection::GridWorld* grid_world = dynamic_cast<  collision_detection::GridWorld*>(world_.get());
+    grid_world->clearObjects();
+  }
+   
+  else
+    world_->clearObjects();
   return processPlanningSceneWorldMsg(scene_msg.world);
 }
 
@@ -1276,6 +1473,7 @@ bool planning_scene::PlanningScene::processPlanningSceneWorldMsg(const moveit_ms
   bool result = true;
   for (std::size_t i = 0; i < world.collision_objects.size(); ++i)
     result &= processCollisionObjectMsg(world.collision_objects[i]);
+
   processOctomapMsg(world.octomap);
   return result;
 }
@@ -1290,58 +1488,127 @@ bool planning_scene::PlanningScene::usePlanningSceneMsg(const moveit_msgs::Plann
 
 void planning_scene::PlanningScene::processOctomapMsg(const octomap_msgs::Octomap &map)
 {
-  // each octomap replaces any previous one
-  world_->removeObject(OCTOMAP_NS);
-
-  if (map.data.empty())
-    return;
-
-  if (map.id != "OcTree")
+  if(use_grid_)
   {
-    logError("Received octomap is of type '%s' but type 'OcTree' is expected.", map.id.c_str());
-    return;
-  }
+    
+    collision_detection::GridWorld* grid_world = dynamic_cast< collision_detection::GridWorld*>(world_.get());
+    
+     // each octomap replaces any previous one
+    grid_world->removeObject(OCTOMAP_NS);
 
-  std::shared_ptr<octomap::OcTree> om(static_cast<octomap::OcTree *>(octomap_msgs::msgToMap(map)));
-  if (!map.header.frame_id.empty())
-  {
-    const Eigen::Affine3d &t = getTransforms().getTransform(map.header.frame_id);
-    world_->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(om)), t);
+    if (map.data.empty())
+      return;
+
+    if (map.id != "OcTree")
+    {
+      logError("Received octomap is of type '%s' but type 'OcTree' is expected.", map.id.c_str());
+      return;
+    }
+    std::shared_ptr<octomap::OcTree> om(static_cast<octomap::OcTree *>(octomap_msgs::msgToMap(map)));
+    if (!map.header.frame_id.empty())
+    {
+      const Eigen::Affine3d &t = getTransforms().getTransform(map.header.frame_id);
+      grid_world->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(om)), t);
+    }
+    else
+    {
+      grid_world->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(om)), Eigen::Affine3d::Identity());
+    }
   }
   else
   {
-    world_->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(om)), Eigen::Affine3d::Identity());
+    // each octomap replaces any previous one
+    world_->removeObject(OCTOMAP_NS);
+
+    if (map.data.empty())
+      return;
+
+    if (map.id != "OcTree")
+    {
+      logError("Received octomap is of type '%s' but type 'OcTree' is expected.", map.id.c_str());
+      return;
+    }
+
+    std::shared_ptr<octomap::OcTree> om(static_cast<octomap::OcTree *>(octomap_msgs::msgToMap(map)));
+    if (!map.header.frame_id.empty())
+    {
+      const Eigen::Affine3d &t = getTransforms().getTransform(map.header.frame_id);
+      world_->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(om)), t);
+    }
+    else
+    {
+      world_->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(om)), Eigen::Affine3d::Identity());
+    }
   }
 }
 
 void planning_scene::PlanningScene::removeAllCollisionObjects()
 {
   const std::vector<std::string> &object_ids = world_->getObjectIds();
-  for (std::size_t i = 0; i < object_ids.size(); ++i)
-    if (object_ids[i] != OCTOMAP_NS)
-      world_->removeObject(object_ids[i]);
+  if(use_grid_)
+  {
+    collision_detection::GridWorld* grid_world = dynamic_cast< collision_detection::GridWorld*>(world_.get());
+    
+    for (std::size_t i = 0; i < object_ids.size(); ++i)
+      if (object_ids[i] != OCTOMAP_NS)
+        grid_world->removeObject(object_ids[i]);
+  }
+  else
+  {
+    for (std::size_t i = 0; i < object_ids.size(); ++i)
+      if (object_ids[i] != OCTOMAP_NS)
+        world_->removeObject(object_ids[i]);
+  }
 }
 
 void planning_scene::PlanningScene::processOctomapMsg(const octomap_msgs::OctomapWithPose &map)
 {
-  // each octomap replaces any previous one
-  world_->removeObject(OCTOMAP_NS);
 
-  if (map.octomap.data.empty())
-    return;
-
-  if (map.octomap.id != "OcTree")
+  if(use_grid_)
   {
-    logError("Received octomap is of type '%s' but type 'OcTree' is expected.", map.octomap.id.c_str());
-    return;
-  }
+    collision_detection::GridWorld* grid_world = dynamic_cast< collision_detection::GridWorld*>(world_.get());
+    // each octomap replaces any previous one
+    grid_world->removeObject(OCTOMAP_NS);
+    if (map.octomap.data.empty())
+      return;
 
-  std::shared_ptr<octomap::OcTree> om(static_cast<octomap::OcTree *>(octomap_msgs::msgToMap(map.octomap)));
-  const Eigen::Affine3d &t = getTransforms().getTransform(map.header.frame_id);
-  Eigen::Affine3d p;
-  tf::poseMsgToEigen(map.origin, p);
-  p = t * p;
-  world_->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(om)), p);
+    if (map.octomap.id != "OcTree")
+    {
+      logError("Received octomap is of type '%s' but type 'OcTree' is expected.", map.octomap.id.c_str());
+      return;
+    }
+
+    std::shared_ptr<octomap::OcTree> om(static_cast<octomap::OcTree *>(octomap_msgs::msgToMap(map.octomap)));
+    const Eigen::Affine3d &t = getTransforms().getTransform(map.header.frame_id);
+    Eigen::Affine3d p;
+    tf::poseMsgToEigen(map.origin, p);
+    p = t * p;
+    grid_world->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(om)), p);
+  }
+  else
+  {
+    // each octomap replaces any previous one
+    world_->removeObject(OCTOMAP_NS);
+
+    if (map.octomap.data.empty())
+      return;
+
+    if (map.octomap.id != "OcTree")
+    {
+      logError("Received octomap is of type '%s' but type 'OcTree' is expected.", map.octomap.id.c_str());
+      return;
+    }
+
+    std::shared_ptr<octomap::OcTree> om(static_cast<octomap::OcTree *>(octomap_msgs::msgToMap(map.octomap)));
+   
+    const Eigen::Affine3d &t = getTransforms().getTransform(map.header.frame_id);
+
+    //ROS_WARN_STREAM("t is "<<t.translation().x()<<","<<t.translation().y()<<","<<t.translation().z());
+    Eigen::Affine3d p;
+    tf::poseMsgToEigen(map.origin, p);
+    p = t * p;
+    world_->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(om)), p);
+  }
 }
 
 void planning_scene::PlanningScene::processOctomapPtr(const std::shared_ptr<const octomap::OcTree> &octree,
@@ -1367,15 +1634,32 @@ void planning_scene::PlanningScene::processOctomapPtr(const std::shared_ptr<cons
         {
           shapes::ShapeConstPtr shape = map->shapes_[0];
           map.reset();  // reset this pointer first so that caching optimizations can be used in CollisionWorld
-          world_->moveShapeInObject(OCTOMAP_NS, shape, t);
+          if(use_grid_)
+          {
+            collision_detection::GridWorld* grid_world = dynamic_cast< collision_detection::GridWorld*>(world_.get());
+            grid_world->moveShapeInObject(OCTOMAP_NS, shape, t);
+          }
+          else
+            world_->moveShapeInObject(OCTOMAP_NS, shape, t);
         }
         return;
       }
     }
   }
   // if the octree pointer changed, update the structure
-  world_->removeObject(OCTOMAP_NS);
-  world_->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(octree)), t);
+  
+  if(use_grid_)
+  {
+    collision_detection::GridWorld* grid_world = dynamic_cast< collision_detection::GridWorld*>(world_.get());
+    grid_world->removeObject(OCTOMAP_NS);
+    grid_world->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(octree)), t);
+  }
+  else
+  {
+    world_->removeObject(OCTOMAP_NS);
+    world_->addToObject(OCTOMAP_NS, shapes::ShapeConstPtr(new shapes::OcTree(octree)), t);
+  }
+  
 }
 
 bool planning_scene::PlanningScene::processAttachedCollisionObjectMsg(
@@ -1622,16 +1906,166 @@ bool planning_scene::PlanningScene::processAttachedCollisionObjectMsg(
   return false;
 }
 
+bool planning_scene::PlanningScene::processCollisionObjectMsgForGrid (const moveit_msgs::CollisionObject& object)
+{
+  
+  collision_detection::GridWorld* grid_world = dynamic_cast< collision_detection::GridWorld*>(world_.get());
+ 
+  if (object.operation == moveit_msgs::CollisionObject::ADD || object.operation == moveit_msgs::CollisionObject::APPEND)
+  {
+    if (object.primitives.empty() && object.meshes.empty() && object.planes.empty())
+    {
+      logError("There are no shapes specified in the collision object message");
+      return false;
+    }
+
+    if (object.primitives.size() != object.primitive_poses.size())
+    {
+      logError("Number of primitive shapes does not match number of poses in collision object message");
+      return false;
+    }
+
+    if (object.meshes.size() != object.mesh_poses.size())
+    {
+      logError("Number of meshes does not match number of poses in collision object message");
+      return false;
+    }
+
+    if (object.planes.size() != object.plane_poses.size())
+    {
+      logError("Number of planes does not match number of poses in collision object message");
+      return false;
+    }
+
+    // replace the object if ADD is specified instead of APPEND
+    
+    if (object.operation == moveit_msgs::CollisionObject::ADD && grid_world->hasObject(object.id))
+      grid_world->removeObject(object.id);
+      
+    const Eigen::Affine3d& t = getTransforms().getTransform(object.header.frame_id);
+    for (std::size_t i = 0; i < object.primitives.size(); ++i)
+    {
+      shapes::Shape* s = shapes::constructShapeFromMsg(object.primitives[i]);
+      if (s)
+      {
+        Eigen::Affine3d p;
+        tf::poseMsgToEigen(object.primitive_poses[i], p);
+        grid_world->addToObject(object.id, shapes::ShapeConstPtr(s), t * p);
+      }
+    }
+    for (std::size_t i = 0; i < object.meshes.size(); ++i)
+    {
+      
+      shapes::Shape* s = shapes::constructShapeFromMsg(object.meshes[i]);
+      if (s)
+      {
+        Eigen::Affine3d p;
+        tf::poseMsgToEigen(object.mesh_poses[i], p);
+        grid_world->addToObject(object.id, shapes::ShapeConstPtr(s), t * p);
+      }
+    }
+    for (std::size_t i = 0; i < object.planes.size(); ++i)
+    {
+      shapes::Shape* s = shapes::constructShapeFromMsg(object.planes[i]);
+      if (s)
+      {
+        Eigen::Affine3d p;
+        tf::poseMsgToEigen(object.plane_poses[i], p);
+        grid_world->addToObject(object.id, shapes::ShapeConstPtr(s), t * p);
+      }
+    }
+    if (!object.type.key.empty() || !object.type.db.empty())
+      setObjectType(object.id, object.type);
+    return true;
+  }
+  else if (object.operation == moveit_msgs::CollisionObject::REMOVE)
+  {
+    if (object.id.empty())
+    {
+      const std::vector<std::string> &object_ids = grid_world->getObjectIds();
+      for (std::size_t i = 0; i < object_ids.size(); ++i)
+    if (object_ids[i] != OCTOMAP_NS)
+      grid_world->removeObject(object_ids[i]);
+    }
+    else
+    {
+      grid_world->removeObject(object.id);
+      removeObjectColor(object.id);
+      removeObjectType(object.id);
+    }
+    return true;
+  }
+  else if (object.operation == moveit_msgs::CollisionObject::MOVE)
+  {
+    if (grid_world->hasObject(object.id))
+    {
+      if (!object.primitives.empty() || !object.meshes.empty() || !object.planes.empty())
+        logWarn("Move operation for object '%s' ignores the geometry specified in the message.", object.id.c_str());
+
+      const Eigen::Affine3d& t = getTransforms().getTransform(object.header.frame_id);
+      EigenSTL::vector_Affine3d new_poses;
+      for (std::size_t i = 0; i < object.primitive_poses.size(); ++i)
+      {
+        Eigen::Affine3d p;
+        tf::poseMsgToEigen(object.primitive_poses[i], p);
+        new_poses.push_back(t * p);
+      }
+      for (std::size_t i = 0; i < object.mesh_poses.size(); ++i)
+      {
+        Eigen::Affine3d p;
+        tf::poseMsgToEigen(object.mesh_poses[i], p);
+        new_poses.push_back(t * p);
+      }
+      for (std::size_t i = 0; i < object.plane_poses.size(); ++i)
+      {
+        Eigen::Affine3d p;
+        tf::poseMsgToEigen(object.plane_poses[i], p);
+        new_poses.push_back(t * p);
+      }
+
+      collision_detection::World::ObjectConstPtr obj = grid_world->getObject(object.id);
+      if (obj->shapes_.size() == new_poses.size())
+      {
+        std::vector<shapes::ShapeConstPtr> shapes = obj->shapes_;
+        obj.reset();
+        grid_world->removeObject(object.id);
+        grid_world->addToObject(object.id, shapes, new_poses);
+       
+      }
+      else
+      {
+        logError("Number of supplied poses (%u) for object '%s' does not match number of shapes (%u). Not moving.",
+                 (unsigned int)new_poses.size(), object.id.c_str(), (unsigned int)obj->shapes_.size());
+        return false;
+      }
+      return true;
+    }
+    else
+      logError("World object '%s' does not exist. Cannot move.", object.id.c_str());
+  }
+  else
+    logError("Unknown collision object operation: %d", object.operation);
+return false;
+}
+
 bool planning_scene::PlanningScene::processCollisionObjectMsg(const moveit_msgs::CollisionObject &object)
 {
-  if (object.id == OCTOMAP_NS)
+
+   if (object.id == OCTOMAP_NS)
   {
     logError("The ID '%s' cannot be used for collision objects (name reserved)", OCTOMAP_NS.c_str());
     return false;
   }
-
-  if (object.operation == moveit_msgs::CollisionObject::ADD || object.operation == moveit_msgs::CollisionObject::APPEND)
+  
+  if(use_grid_)
   {
+    bool result =  processCollisionObjectMsgForGrid(object);
+    return result;
+  }
+  else
+  {
+    if (object.operation == moveit_msgs::CollisionObject::ADD || object.operation == moveit_msgs::CollisionObject::APPEND)
+    {
     if (object.primitives.empty() && object.meshes.empty() && object.planes.empty())
     {
       logError("There are no shapes specified in the collision object message");
@@ -1660,11 +2094,11 @@ bool planning_scene::PlanningScene::processCollisionObjectMsg(const moveit_msgs:
     if (object.operation == moveit_msgs::CollisionObject::ADD && world_->hasObject(object.id))
       world_->removeObject(object.id);
 
-    const Eigen::Affine3d &t = getTransforms().getTransform(object.header.frame_id);
+    const Eigen::Affine3d& t = getTransforms().getTransform(object.header.frame_id);
 
     for (std::size_t i = 0; i < object.primitives.size(); ++i)
     {
-      shapes::Shape *s = shapes::constructShapeFromMsg(object.primitives[i]);
+      shapes::Shape* s = shapes::constructShapeFromMsg(object.primitives[i]);
       if (s)
       {
         Eigen::Affine3d p;
@@ -1674,7 +2108,7 @@ bool planning_scene::PlanningScene::processCollisionObjectMsg(const moveit_msgs:
     }
     for (std::size_t i = 0; i < object.meshes.size(); ++i)
     {
-      shapes::Shape *s = shapes::constructShapeFromMsg(object.meshes[i]);
+      shapes::Shape* s = shapes::constructShapeFromMsg(object.meshes[i]);
       if (s)
       {
         Eigen::Affine3d p;
@@ -1684,7 +2118,7 @@ bool planning_scene::PlanningScene::processCollisionObjectMsg(const moveit_msgs:
     }
     for (std::size_t i = 0; i < object.planes.size(); ++i)
     {
-      shapes::Shape *s = shapes::constructShapeFromMsg(object.planes[i]);
+      shapes::Shape* s = shapes::constructShapeFromMsg(object.planes[i]);
       if (s)
       {
         Eigen::Affine3d p;
@@ -1703,7 +2137,11 @@ bool planning_scene::PlanningScene::processCollisionObjectMsg(const moveit_msgs:
       removeAllCollisionObjects();
     }
     else
+    {
       world_->removeObject(object.id);
+      removeObjectColor(object.id);
+      removeObjectType(object.id);
+    }
     return true;
   }
   else if (object.operation == moveit_msgs::CollisionObject::MOVE)
@@ -1711,9 +2149,9 @@ bool planning_scene::PlanningScene::processCollisionObjectMsg(const moveit_msgs:
     if (world_->hasObject(object.id))
     {
       if (!object.primitives.empty() || !object.meshes.empty() || !object.planes.empty())
-        logWarn("Move operation for object '%s' ignores the geometry specified in the message.");
+        logWarn("Move operation for object '%s' ignores the geometry specified in the message.", object.id.c_str());
 
-      const Eigen::Affine3d &t = getTransforms().getTransform(object.header.frame_id);
+      const Eigen::Affine3d& t = getTransforms().getTransform(object.header.frame_id);
       EigenSTL::vector_Affine3d new_poses;
       for (std::size_t i = 0; i < object.primitive_poses.size(); ++i)
       {
@@ -1755,7 +2193,9 @@ bool planning_scene::PlanningScene::processCollisionObjectMsg(const moveit_msgs:
   }
   else
     logError("Unknown collision object operation: %d", object.operation);
-  return false;
+return false;
+  }
+
 }
 
 const Eigen::Affine3d &planning_scene::PlanningScene::getFrameTransform(const std::string &id) const
@@ -1819,6 +2259,7 @@ bool planning_scene::PlanningScene::hasObjectType(const std::string &id) const
       return true;
   if (parent_)
     return parent_->hasObjectType(id);
+
   return false;
 }
 

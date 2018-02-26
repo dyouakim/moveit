@@ -57,7 +57,6 @@ GridWorld::GridWorld(sbpl::OccupancyGrid* grid) :
     m_object_voxel_map(),
     m_padding(0.0)
 {
-
 }
 
 GridWorld::GridWorld(GridWorld& world) :
@@ -67,18 +66,17 @@ GridWorld::GridWorld(GridWorld& world) :
     m_object_voxel_map = world.m_object_voxel_map;
     m_padding = world.padding();
     m_object_map = world.m_object_map;
-
 }
 
 GridWorld::GridWorld(const World& world, sbpl::OccupancyGrid* grid)
 :
     collision_detection::World::World(world),
-   // m_grid(grid),
     m_object_map(),
     m_object_voxel_map(),
     m_padding(0.0)
 {
-    m_grid = new sbpl::OccupancyGrid(*grid);
+     m_grid = new sbpl::OccupancyGrid(*grid);
+    printObjectsSize();
 }
 
 
@@ -118,7 +116,7 @@ void collision_detection::GridWorld::addToObject(const std::string& id, const sh
 
 bool collision_detection::GridWorld::removeObject(const std::string& id)
 {
-  if(collision_detection::World::removeObject(id))
+    collision_detection::World::removeObject(id);
     return removeObjectFromGrid(id);
 }
 
@@ -126,15 +124,15 @@ bool collision_detection::GridWorld::moveShapeInObject(const std::string& id, co
                                                    const Eigen::Affine3d& pose)
 {
   ObjectConstPtr object = collision_detection::World::getObject(id);
-  if(collision_detection::World::moveShapeInObject(id, shape,pose))
-    return moveShapesInGrid(object) ;
+  collision_detection::World::moveShapeInObject(id, shape,pose);
+  return moveShapesInGrid(object) ;
 }
 
 bool collision_detection::GridWorld::removeShapeFromObject(const std::string& id, const shapes::ShapeConstPtr& shape)
 {
   ObjectConstPtr object = collision_detection::World::getObject(id);
-  if(collision_detection::World::removeShapeFromObject(id, shape))
-    return removeShapesFromGrid(object) ;
+  collision_detection::World::removeShapeFromObject(id, shape);
+  return removeShapesFromGrid(object) ;
 }
 
 void collision_detection::GridWorld::clearObjects()
@@ -149,8 +147,9 @@ void collision_detection::GridWorld::clearObjects()
 
 bool GridWorld::insertObjectInGrid(const ObjectConstPtr& object)
 {
-
-    assert(m_object_voxel_map.find(object->id_) == m_object_voxel_map.end());
+    auto old_vit = m_object_voxel_map.find(object->id_);
+    if( old_vit != m_object_voxel_map.end())
+        m_object_voxel_map.erase(old_vit);
 
     const double res = m_grid->resolution();
     const Eigen::Vector3d origin(
@@ -172,7 +171,7 @@ bool GridWorld::insertObjectInGrid(const ObjectConstPtr& object)
     auto vit = m_object_voxel_map.insert(
             std::make_pair(object->id_, std::vector<VoxelList>()));
     vit.first->second = std::move(all_voxels);
-    assert(vit.second);
+    //assert(vit.second);
     m_object_map.insert(std::make_pair(object->id_, object));
     for (const auto& voxel_list : vit.first->second) {
         logWarn("Adding %zu voxels from collision object '%s' to the distance transform",
@@ -182,25 +181,43 @@ bool GridWorld::insertObjectInGrid(const ObjectConstPtr& object)
     return true;
 }
 
+void GridWorld::printObjectsSize()
+{
+        logWarn("Parent objects are %zu ; Grid World with voxel size %zu and objects size %zu",collision_detection::World::getObjectIds().size(),m_object_map.size(),m_object_map.size());
+}
+
 bool GridWorld::removeObjectFromGrid(const std::string& object_name)
 {
     auto oit = m_object_map.find(object_name);
-    assert(oit != m_object_map.end());
-
     auto vit = m_object_voxel_map.find(object_name);
-    assert(vit != m_object_voxel_map.end());
-
-    for (const auto& voxel_list : vit->second) {
-        logWarn("Removing %zu grid cells from the distance transform", voxel_list.size());
-        m_grid->removePointsFromField(voxel_list);
-        logWarn("done removing from grid");
+    
+    if(oit != m_object_map.end() && vit != m_object_voxel_map.end())
+    {
+       for (const auto& voxel_list : vit->second) {
+            logWarn("1 Removing %zu grid cells from the distance transform", voxel_list.size());
+            m_grid->removePointsFromField(voxel_list);
+        }
+        m_object_voxel_map.erase(vit);
+        m_object_map.erase(oit);
+        return true;
     }
-    logWarn("before erasing");
-    m_object_voxel_map.erase(vit);
-    m_object_map.erase(oit);
+    else if (oit != m_object_map.end() && vit == m_object_voxel_map.end())
+    {
+        m_object_map.erase(oit);
+        return true;
 
-    logWarn("after erasing");
-    return true;
+    }
+    else if (oit == m_object_map.end() && vit != m_object_voxel_map.end())
+    {
+       for (const auto& voxel_list : vit->second) {
+            m_grid->removePointsFromField(voxel_list);
+        }
+        m_object_voxel_map.erase(vit);
+        return true;
+    }
+    logWarn("after removing failure %s ", object_name.c_str());
+        printObjectsSize();
+    return false;
 }
 
 bool GridWorld::removeObjectFromGrid(const ObjectConstPtr& object)
@@ -211,7 +228,10 @@ bool GridWorld::removeObjectFromGrid(const ObjectConstPtr& object)
 bool GridWorld::moveShapesInGrid(const ObjectConstPtr& object)
 {
     // TODO: optimized version
-    return removeObjectFromGrid(object) && insertObjectInGrid(object);
+    if(removeObjectFromGrid(object))
+        return insertObjectInGrid(object);
+    else
+        return false;
 }
 
 bool GridWorld::insertShapesInGrid(const ObjectConstPtr& object)
@@ -229,11 +249,14 @@ bool GridWorld::removeShapesFromGrid(const ObjectConstPtr& object)
 void GridWorld::reset()
 {
     m_grid->reset();
-    for (const auto& entry : m_object_voxel_map) {
+    m_object_voxel_map.clear();
+    m_object_map.clear();
+
+    /*for (conpst auto& entry : m_object_voxel_map) {
         for (const auto& voxel_list : entry.second) {
             m_grid->addPointsToField(voxel_list);
         }
-    }
+    }*/
 }
 
 

@@ -108,6 +108,8 @@ public:
     void setPadding(double padding);
     double padding() const;
 
+    void printObjectsSize();
+
 private:
 
     sbpl::OccupancyGrid* m_grid;
@@ -130,8 +132,7 @@ private:
 
     /// \brief Reset the underlying occupancy grid.
     ///
-    /// Resets the WorldCollisionModel by clearing the underlying occupancy grid and
-    /// revoxelizing all of the managed objects.
+    /// Resets the WorldCollisionModel by clearing the underlying occupancy grid
     void reset();
 };
 

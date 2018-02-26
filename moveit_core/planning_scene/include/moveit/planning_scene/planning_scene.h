@@ -42,6 +42,7 @@
 #include <moveit/transforms/transforms.h>
 #include <moveit/collision_detection/collision_detector_allocator.h>
 #include <moveit/collision_detection/world_diff.h>
+#include <moveit/collision_detection/grid_based_world.h>
 #include <moveit/kinematic_constraints/kinematic_constraint.h>
 #include <moveit/kinematics_base/kinematics_base.h>
 #include <moveit/robot_trajectory/robot_trajectory.h>
@@ -56,6 +57,11 @@
 #include <boost/concept_check.hpp>
 #include <memory>
 
+#include <moveit_msgs/OrientedBoundingBox.h>
+#include <moveit_msgs/WorkspaceParameters.h>
+
+#include <smpl/occupancy_grid.h>
+#include <moveit/distance_field/sbpl_propagation_distance_field.h>
 /** \brief This namespace includes the central class for representing planning contexts */
 namespace planning_scene
 {
@@ -90,6 +96,10 @@ public:
   PlanningScene(const robot_model::RobotModelConstPtr& robot_model,
                 collision_detection::WorldPtr world = collision_detection::WorldPtr(new collision_detection::World()));
 
+  /** \brief construct using an existing RobotModel */
+  PlanningScene(const robot_model::RobotModelConstPtr& robot_model, bool use_grid);
+
+
   /** \brief construct using a urdf and srdf.
    * A RobotModel for the PlanningScene will be created using the urdf and srdf. */
   PlanningScene(const urdf::ModelInterfaceSharedPtr& urdf_model, const srdf::ModelConstSharedPtr& srdf_model,
@@ -105,6 +115,8 @@ public:
   {
     return name_;
   }
+
+  void setGridParams(moveit_msgs::WorkspaceParameters& workspace, double resolution, double max_dist);
 
   /** \brief Set the name of the planning scene */
   void setName(const std::string& name)
@@ -219,6 +231,8 @@ public:
    * body id or a collision object */
   bool knowsFrameTransform(const robot_state::RobotState& state, const std::string& id) const;
 
+  bool useGrid(){return use_grid_;}
+  void setUseGrid (bool use_grid) {use_grid_ = use_grid;}
   /**@}*/
 
   /**
@@ -282,7 +296,7 @@ public:
   }
 
   // brief Get the representation of the world
-  const collision_detection::WorldPtr& getWorldNonConst()
+  collision_detection::WorldPtr& getWorldNonConst()
   {
     // we always have a world representation
     return world_;
@@ -293,6 +307,11 @@ public:
   {
     // we always have a world representation after configure is called.
     return active_collision_->cworld_const_;
+  }
+
+  const collision_detection::CollisionWorldPtr& getCollisionWorldNonConst()
+  {
+    return active_collision_->cworld_;
   }
 
   /** \brief Get the active collision detector for the robot */
@@ -310,6 +329,7 @@ public:
   /** \brief Get a specific collision detector for the world.  If not found return active CollisionWorld. */
   const collision_detection::CollisionWorldConstPtr&
   getCollisionWorld(const std::string& collision_detector_name) const;
+
 
   /** \brief Get a specific collision detector for the padded robot.  If no found return active CollisionRobot. */
   const collision_detection::CollisionRobotConstPtr&
@@ -705,6 +725,7 @@ public:
   bool usePlanningSceneMsg(const moveit_msgs::PlanningScene& scene);
 
   bool processCollisionObjectMsg(const moveit_msgs::CollisionObject& object);
+  bool processCollisionObjectMsgForGrid (const moveit_msgs::CollisionObject& object);
   bool processAttachedCollisionObjectMsg(const moveit_msgs::AttachedCollisionObject& object);
 
   bool processPlanningSceneWorldMsg(const moveit_msgs::PlanningSceneWorld& world);
@@ -925,6 +946,8 @@ public:
   /** \brief Clone a planning scene. Even if the scene \e scene depends on a parent, the cloned scene will not. */
   static PlanningScenePtr clone(const PlanningSceneConstPtr& scene);
 
+ 
+
 private:
   /* Private constructor used by the diff() methods. */
   PlanningScene(const PlanningSceneConstPtr& parent);
@@ -932,6 +955,10 @@ private:
   /* Initialize the scene.  This should only be called by the constructors.
    * Requires a valid robot_model_ */
   void initialize();
+
+
+  bool getPlanningFrameWorkspaceAABB(const moveit_msgs::WorkspaceParameters& workspace,
+    moveit_msgs::OrientedBoundingBox& aabb);
 
   /* helper function to create a RobotModel from a urdf/srdf. */
   static robot_model::RobotModelPtr createRobotModel(const urdf::ModelInterfaceSharedPtr& urdf_model,
@@ -1007,6 +1034,9 @@ private:
 
   // a map of object types
   std::unique_ptr<ObjectTypeMap> object_types_;
+
+  bool use_grid_;
+    
 };
 }
 

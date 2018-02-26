@@ -174,7 +174,6 @@ void OcTreeRender::octreeDecoding(const std::shared_ptr<const octomap::OcTree>& 
     {
       bool display_voxel = false;
       octomath::Vector3 point = octree->keyToCoord(it.getKey());
-      ROS_WARN_STREAM("Node status "<<octree->isNodeOccupied(*it)<<" with coord "<<point.x()<<","<<point.y()<<","<<point.z());
       all++;
       if(octree->isNodeOccupied(*it))
         occupied++;
@@ -243,8 +242,7 @@ void OcTreeRender::octreeDecoding(const std::shared_ptr<const octomap::OcTree>& 
     }
   }
 
-  ROS_ERROR_STREAM("Nodes occupied "<<occupied<<", all "<<all);
-
+  
   for (size_t i = 0; i < octree_depth_; ++i)
   {
     double size = octree->getNodeSize(i + 1);

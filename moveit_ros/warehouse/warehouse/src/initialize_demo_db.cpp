@@ -79,7 +79,20 @@ int main(int argc, char** argv)
   spinner.start();
 
   ros::NodeHandle nh;
-  planning_scene_monitor::PlanningSceneMonitor psm(ROBOT_DESCRIPTION);
+
+  robot_model_loader::RobotModelLoader robot_model_loader(ROBOT_DESCRIPTION);
+  moveit_msgs::WorkspaceParameters workspace;
+   
+  workspace.header.frame_id = robot_model_loader.getModel()->getModelFrame();
+  workspace.header.stamp = ros::Time::now();
+  workspace.min_corner.x = -10;
+  workspace.min_corner.y = -10;
+  workspace.min_corner.z = 1.5;
+  workspace.max_corner.x = 10;
+  workspace.max_corner.y = 10;
+  workspace.max_corner.z = 15;
+
+  planning_scene_monitor::PlanningSceneMonitor psm(ROBOT_DESCRIPTION,true, workspace,0.15,0.5);
   if (!psm.getPlanningScene())
   {
     ROS_ERROR("Unable to initialize PlanningSceneMonitor");

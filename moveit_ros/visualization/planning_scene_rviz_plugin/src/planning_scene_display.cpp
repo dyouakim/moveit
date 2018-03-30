@@ -367,7 +367,7 @@ void PlanningSceneDisplay::changedRobotSceneAlpha()
 
 void PlanningSceneDisplay::changedPlanningSceneTopic()
 {
-  if (planning_scene_monitor_ && planning_scene_topic_property_)
+ if (planning_scene_monitor_ && planning_scene_topic_property_)
   {
     planning_scene_monitor_->startSceneMonitor(planning_scene_topic_property_->getStdString());
     std::string service_name = planning_scene_monitor::PlanningSceneMonitor::DEFAULT_PLANNING_SCENE_SERVICE;
@@ -486,8 +486,24 @@ void PlanningSceneDisplay::unsetLinkColor(rviz::Robot* robot, const std::string&
 // ******************************************************************************************
 planning_scene_monitor::PlanningSceneMonitorPtr PlanningSceneDisplay::createPlanningSceneMonitor()
 {
-  return planning_scene_monitor::PlanningSceneMonitorPtr(new planning_scene_monitor::PlanningSceneMonitor(
-      robot_description_property_->getStdString(), context_->getFrameManager()->getTFClientPtr(),
+  robot_model_loader::RobotModelLoader robot_model_loader(robot_description_property_->getStdString());
+  moveit_msgs::WorkspaceParameters workspace;
+   
+  workspace.header.frame_id = robot_model_loader.getModel()->getModelFrame();
+  workspace.header.stamp = ros::Time::now();
+  workspace.min_corner.x = -10;
+  workspace.min_corner.y = -10;
+  workspace.min_corner.z = 1.5;
+  workspace.max_corner.x = 10;
+  workspace.max_corner.y = 10;
+  workspace.max_corner.z = 15;
+
+  return planning_scene_monitor::PlanningSceneMonitorPtr(
+    /*new planning_scene_monitor::PlanningSceneMonitor(
+      robot_description_property_->getStdString(),true, workspace,0.2,0.5, context_->getFrameManager()->getTFClientPtr(),
+      getNameStd() + "_planning_scene_monitor")*/
+    new planning_scene_monitor::PlanningSceneMonitor(
+      robot_description_property_->getStdString(),context_->getFrameManager()->getTFClientPtr(),
       getNameStd() + "_planning_scene_monitor"));
 }
 
@@ -523,7 +539,7 @@ void PlanningSceneDisplay::loadRobotModel()
   {
     setStatus(rviz::StatusProperty::Error, "PlanningScene", "No Planning Scene Loaded");
   }
-
+  
   if (planning_scene_monitor_)
     planning_scene_monitor_->addUpdateCallback(
         boost::bind(&PlanningSceneDisplay::sceneMonitorReceivedUpdate, this, _1));

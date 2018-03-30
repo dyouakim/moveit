@@ -69,6 +69,7 @@ void onSceneUpdate(planning_scene_monitor::PlanningSceneMonitor *psm, moveit_war
 void onMotionPlanRequest(const moveit_msgs::MotionPlanRequestConstPtr &req,
                          planning_scene_monitor::PlanningSceneMonitor *psm, moveit_warehouse::PlanningSceneStorage *pss)
 {
+  ROS_WARN("MP request");
   if (psm->getPlanningScene()->getName().empty())
   {
     ROS_INFO("Scene name is empty. Not saving planning request.");
@@ -79,6 +80,7 @@ void onMotionPlanRequest(const moveit_msgs::MotionPlanRequestConstPtr &req,
 
 void onConstraints(const moveit_msgs::ConstraintsConstPtr &msg, moveit_warehouse::ConstraintsStorage *cs)
 {
+  ROS_WARN("constraints");
   if (msg->name.empty())
   {
     ROS_INFO("No name specified for constraints. Not saving.");
@@ -100,6 +102,7 @@ void onConstraints(const moveit_msgs::ConstraintsConstPtr &msg, moveit_warehouse
 
 void onRobotState(const moveit_msgs::RobotStateConstPtr &msg, moveit_warehouse::RobotStateStorage *rs)
 {
+  ROS_WARN("Robot state");
   std::vector<std::string> names;
   rs->getKnownRobotStates(names);
   std::set<std::string> names_set(names.begin(), names.end());
@@ -140,7 +143,19 @@ int main(int argc, char **argv)
 
   ros::NodeHandle nh;
   boost::shared_ptr<tf::TransformListener> tf(new tf::TransformListener());
-  planning_scene_monitor::PlanningSceneMonitor psm(ROBOT_DESCRIPTION, tf);
+  robot_model_loader::RobotModelLoader robot_model_loader(ROBOT_DESCRIPTION);
+  moveit_msgs::WorkspaceParameters workspace;
+   
+  workspace.header.frame_id = robot_model_loader.getModel()->getModelFrame();
+  workspace.header.stamp = ros::Time::now();
+  workspace.min_corner.x = -10;
+  workspace.min_corner.y = -10;
+  workspace.min_corner.z = 1.5;
+  workspace.max_corner.x = 10;
+  workspace.max_corner.y = 10;
+  workspace.max_corner.z = 15;
+
+  planning_scene_monitor::PlanningSceneMonitor psm(ROBOT_DESCRIPTION, true, workspace,0.15,0.5,tf);
   if (!psm.getPlanningScene())
   {
     ROS_ERROR("Unable to initialize PlanningSceneMonitor");
@@ -197,7 +212,6 @@ int main(int argc, char **argv)
   ROS_INFO_STREAM("Listening for planning requests on topic " << mplan_req_sub.getTopic());
   ROS_INFO_STREAM("Listening for named constraints on topic " << constr_sub.getTopic());
   ROS_INFO_STREAM("Listening for states on topic " << state_sub.getTopic());
-
   ros::waitForShutdown();
   return 0;
 }

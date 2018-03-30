@@ -172,12 +172,27 @@ int main(int argc, char** argv)
 
   ros::AsyncSpinner spinner(1);
   spinner.start();
-
+  
+     
   boost::shared_ptr<tf::TransformListener> tf(new tf::TransformListener(ros::Duration(10.0)));
 
-  planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor(
-      new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION, tf));
+  moveit_msgs::WorkspaceParameters workspace;
+  robot_model_loader::RobotModelLoader robot_model_loader(ROBOT_DESCRIPTION);
+  
+  workspace.header.frame_id = robot_model_loader.getModel()->getModelFrame();
+  workspace.header.stamp = ros::Time::now();
+  workspace.min_corner.x = -10;
+  workspace.min_corner.y = -10;
+  workspace.min_corner.z = 1.5;
+  workspace.max_corner.x = 10;
+  workspace.max_corner.y = 10;
+  workspace.max_corner.z = 15;
 
+  planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor(
+    //new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION,tf));
+    new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION, true,workspace,0.2,0.5, tf));
+
+  
   if (planning_scene_monitor->getPlanningScene())
   {
     bool debug = false;
@@ -193,9 +208,12 @@ int main(int argc, char** argv)
       ROS_INFO("MoveGroup debug mode is OFF");
 
     printf(MOVEIT_CONSOLE_COLOR_CYAN "Starting context monitors...\n" MOVEIT_CONSOLE_COLOR_RESET);
-    planning_scene_monitor->startSceneMonitor();
+      planning_scene_monitor->startSceneMonitor();
+    
     planning_scene_monitor->startWorldGeometryMonitor();
+    
     planning_scene_monitor->startStateMonitor();
+    
     printf(MOVEIT_CONSOLE_COLOR_CYAN "Context monitors started.\n" MOVEIT_CONSOLE_COLOR_RESET);
 
     move_group::MoveGroupExe mge(planning_scene_monitor, debug);
@@ -203,7 +221,6 @@ int main(int argc, char** argv)
     planning_scene_monitor->publishDebugInformation(debug);
 
     mge.status();
-
     ros::waitForShutdown();
   }
   else

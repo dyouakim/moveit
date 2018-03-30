@@ -36,7 +36,7 @@
 
 #include <moveit/motion_planning_rviz_plugin/motion_planning_frame.h>
 #include <moveit/motion_planning_rviz_plugin/motion_planning_display.h>
-
+#include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/kinematic_constraints/utils.h>
 #include <moveit/robot_state/conversions.h>
 
@@ -152,7 +152,8 @@ void MotionPlanningFrame::computePlanAndExecuteButtonClicked()
   // to suppress a warning, we pass an empty state (which encodes "start from current state")
   move_group_->setStartStateToCurrentState();
   ui_->stop_button->setEnabled(true);
-  bool success = move_group_->move();
+  moveit::planning_interface::MoveGroupInterface::Plan plan;
+  bool success = move_group_->move(plan);
   onFinishedExecution(success);
   ui_->plan_and_execute_button->setEnabled(true);
 }

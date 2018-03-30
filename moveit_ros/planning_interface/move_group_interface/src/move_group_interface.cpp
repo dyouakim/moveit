@@ -475,16 +475,15 @@ public:
 
   const std::string &getEndEffector() const
   {
-
     if (!end_effector_link_.empty())
     {
       const std::vector<std::string> &possible_eefs =
           getRobotModel()->getJointModelGroup(opt_.group_name_)->getAttachedEndEffectorNames();
       for (std::size_t i = 0; i < possible_eefs.size(); ++i)
-	{
-	if (getRobotModel()->getEndEffector(possible_eefs[i])->hasLinkModel(end_effector_link_))
-          return possible_eefs[i];
-	}
+	     {
+	         if (getRobotModel()->getEndEffector(possible_eefs[i])->hasLinkModel(end_effector_link_))
+            return possible_eefs[i];
+	     }
     }
   
     static std::string empty;
@@ -799,7 +798,7 @@ public:
    
   }
 
-  MoveItErrorCode move(bool wait)
+  MoveItErrorCode move(Plan &plan, bool wait)
   {
     if (!move_action_client_)
     {
@@ -832,6 +831,10 @@ public:
 
     if (move_action_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
     {
+      plan.trajectory_ = move_action_client_->getResult()->planned_trajectory;
+    
+      plan.start_state_ = move_action_client_->getResult()->trajectory_start;
+      plan.planning_time_ = move_action_client_->getResult()->planning_time;
       return MoveItErrorCode(move_action_client_->getResult()->error_code);
     }
     else
@@ -1067,6 +1070,7 @@ public:
     goal.request.planner_id = planner_id_;
     goal.request.workspace_parameters = workspace_parameters_;
     goal.request.request_id = request_num_;
+    goal.request.repair_index = -1;
     request_num_++;
 
     if (considered_start_state_)
@@ -1124,11 +1128,11 @@ public:
     goal.target_name = object;
     goal.group_name = opt_.group_name_;
     goal.end_effector = getEndEffector();
-    ROS_ERROR_STREAM("the EE name for the goal is "<<getEndEffector());
     goal.allowed_planning_time = allowed_planning_time_;
     goal.support_surface_name = support_surface_;
     goal.planner_id = planner_id_;
     goal.workspace_parameters = workspace_parameters_;
+    request_num_++;
     if (!support_surface_.empty())
       goal.allow_gripper_support_collision = true;
 
@@ -1416,14 +1420,14 @@ void moveit::planning_interface::MoveGroupInterface::setMaxAccelerationScalingFa
   impl_->setMaxAccelerationScalingFactor(max_acceleration_scaling_factor);
 }
 
-moveit::planning_interface::MoveItErrorCode moveit::planning_interface::MoveGroupInterface::asyncMove()
+moveit::planning_interface::MoveItErrorCode moveit::planning_interface::MoveGroupInterface::asyncMove(Plan &plan)
 {
-  return impl_->move(false);
+  return impl_->move(plan,false);
 }
 
-moveit::planning_interface::MoveItErrorCode moveit::planning_interface::MoveGroupInterface::move()
+moveit::planning_interface::MoveItErrorCode moveit::planning_interface::MoveGroupInterface::move(Plan &plan)
 {
-  return impl_->move(true);
+  return impl_->move(plan,true);
 }
 
 moveit::planning_interface::MoveItErrorCode

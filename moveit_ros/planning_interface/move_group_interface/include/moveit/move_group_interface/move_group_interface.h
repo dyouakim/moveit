@@ -659,13 +659,13 @@ public:
   /** \brief Plan and execute a trajectory that takes the group of joints declared in the constructor to the specified
      target.
       This call is not blocking (does not wait for the execution of the trajectory to complete). */
-  MoveItErrorCode asyncMove();
+  MoveItErrorCode asyncMove(Plan &plan);
 
   /** \brief Plan and execute a trajectory that takes the group of joints declared in the constructor to the specified
      target.
       This call is always blocking (waits for the execution of the trajectory to complete) and requires an asynchronous
      spinner to be started.*/
-  MoveItErrorCode move();
+  MoveItErrorCode move(Plan &plan);
 
   /** \brief Compute a motion plan that takes the group declared in the constructor from the current state to the
      specified

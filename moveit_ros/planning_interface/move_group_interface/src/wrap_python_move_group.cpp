@@ -361,12 +361,14 @@ public:
 
   bool movePython()
   {
-    return move();
+    MoveGroupInterface::Plan plan;
+    return move(plan);
   }
 
   bool asyncMovePython()
   {
-    return asyncMove();
+    MoveGroupInterface::Plan plan;
+    return asyncMove(plan);
   }
 
   bool attachObjectPython(const std::string& object_name, const std::string& link_name, const bp::list& touch_links)

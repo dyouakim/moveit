@@ -115,26 +115,53 @@ void IterativeParabolicTimeParameterization::applyVelocityConstraints(robot_traj
   else
     logWarn("Invalid max_velocity_scaling_factor %f specified, defaulting to %f instead.", max_velocity_scaling_factor,
             velocity_scaling_factor);
-
   for (int i = 0; i < num_points - 1; ++i)
   {
     const robot_state::RobotStatePtr& curr_waypoint = rob_trajectory.getWayPointPtr(i);
     const robot_state::RobotStatePtr& next_waypoint = rob_trajectory.getWayPointPtr(i + 1);
-
+    //logWarn("Points %f,%f %f,%f",curr_waypoint->getVariablePosition(idx[0]),curr_waypoint->getVariablePosition(idx[1]),curr_waypoint->getVariablePosition(idx[2]),curr_waypoint->getVariablePosition(idx[3]));
+    Eigen::Vector2d trannsformedVelLim = velVehicleToWorld(rmodel.getVariableBounds(vars[0]).max_velocity_,rmodel.getVariableBounds(vars[1]).max_velocity_,curr_waypoint->getVariablePosition(idx[3]) );
+    //logWarn("Xmax, Ymax, Yaw before %f, %f, %f, %s, %s", rmodel.getVariableBounds(vars[0]).max_velocity_, rmodel.getVariableBounds(vars[1]).max_velocity_,curr_waypoint->getVariablePosition(idx[3]));
+    //logWarn("X & Y after %f, %f",trannsformedVelLim(0),trannsformedVelLim(1));
     for (std::size_t j = 0; j < vars.size(); ++j)
     {
       double v_max = DEFAULT_VEL_MAX;
       const robot_model::VariableBounds& b = rmodel.getVariableBounds(vars[j]);
-      if (b.velocity_bounded_)
-        v_max =
-            std::min(fabs(b.max_velocity_ * velocity_scaling_factor), fabs(b.min_velocity_ * velocity_scaling_factor));
+      if (b.velocity_bounded_ )
+        if(j==0)
+          v_max = std::min(fabs(trannsformedVelLim(0) * velocity_scaling_factor), fabs(-trannsformedVelLim(0) * velocity_scaling_factor));
+        else if(j==1)
+          v_max = std::min(fabs(trannsformedVelLim(1) * velocity_scaling_factor), fabs(-trannsformedVelLim(1) * velocity_scaling_factor));
+        else if(j==2 && fabs(curr_waypoint->getVariablePosition(idx[j]))<fabs(next_waypoint->getVariablePosition(idx[j])))
+        {
+          //logWarn("going down %f,%f",curr_waypoint->getVariablePosition(idx[j]),next_waypoint->getVariablePosition(idx[j]));
+          v_max = fabs(b.max_velocity_ * velocity_scaling_factor);
+        }
+        else if(j==2 && fabs(curr_waypoint->getVariablePosition(idx[j]))>fabs(next_waypoint->getVariablePosition(idx[j])))
+        {
+          //logWarn("going up %f,%f",curr_waypoint->getVariablePosition(idx[j]),next_waypoint->getVariablePosition(idx[j]));
+          v_max = fabs(0.5*b.min_velocity_ * velocity_scaling_factor);
+        }
+        else
+        v_max = std::min(fabs(b.max_velocity_ * velocity_scaling_factor), fabs(b.min_velocity_ * velocity_scaling_factor));
       const double dq1 = curr_waypoint->getVariablePosition(idx[j]);
       const double dq2 = next_waypoint->getVariablePosition(idx[j]);
       const double t_min = std::abs(dq2 - dq1) / v_max;
       if (t_min > time_diff[i])
         time_diff[i] = t_min;
+
+      //logWarn("Current joint %i has max vel of %f , min time of %f and time diff of %f", idx[j],v_max, t_min, time_diff[i]);
     }
   }
+}
+
+Eigen::Vector2d IterativeParabolicTimeParameterization::velVehicleToWorld(double velX, double velY, double yaw) const
+{
+  Eigen::Rotation2D<double> rotToNorth(yaw);
+
+  Eigen::Vector2d pointXY(velX, velY);
+  Eigen::Vector2d rotatedXY = rotToNorth.toRotationMatrix()*pointXY;
+  return rotatedXY;
 }
 
 // Iteratively expand dt1 interval by a constant factor until within acceleration constraint

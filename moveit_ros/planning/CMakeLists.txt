@@ -24,6 +24,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 find_package(Eigen3 REQUIRED)
+find_package(dynamicEDT3D REQUIRED)
 
 # Eigen 3.2 (Wily) only provides EIGEN3_INCLUDE_DIR, not EIGEN3_INCLUDE_DIRS
 if(NOT EIGEN3_INCLUDE_DIRS)
@@ -59,6 +60,7 @@ catkin_package(
     moveit_plan_execution
     moveit_planning_scene_monitor
     moveit_collision_plugin_loader
+    ${DYNAMICEDT3D_LIBRARIES}
   INCLUDE_DIRS
     ${THIS_PACKAGE_INCLUDE_DIRS}
   CATKIN_DEPENDS
@@ -72,6 +74,7 @@ catkin_package(
 include_directories(${THIS_PACKAGE_INCLUDE_DIRS}
                     ${catkin_INCLUDE_DIRS}
                     ${Boost_INCLUDE_DIRS}
+                    ${OCTOMAP_INCLUDE_DIRS}
 )
 include_directories(SYSTEM
                     ${EIGEN3_INCLUDE_DIRS}
@@ -79,6 +82,7 @@ include_directories(SYSTEM
 
 link_directories(${Boost_LIBRARY_DIRS})
 link_directories(${catkin_LIBRARY_DIRS})
+link_directories(${DYNAMICEDT3D_LIBRARY_DIRS})
 
 add_subdirectory(rdf_loader)
 add_subdirectory(collision_plugin_loader)

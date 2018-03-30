@@ -42,6 +42,8 @@
 #include <Eigen/Core>
 #include <moveit/macros/declare_ptr.h>
 
+
+#include <console_bridge/console.h>
 namespace distance_field
 {
 /// \brief Specifies dimension of different axes
@@ -155,6 +157,7 @@ public:
    * corruption and/or SEGFAULTS will occur.
    */
   T& getCell(int x, int y, int z);
+  T* getCellPtr(int x, int y, int z);
   T& getCell(const Eigen::Vector3i& pos);
   const T& getCell(int x, int y, int z) const;
   const T& getCell(const Eigen::Vector3i& pos) const;
@@ -489,6 +492,12 @@ inline T& VoxelGrid<T>::getCell(int x, int y, int z)
 }
 
 template <typename T>
+inline T* VoxelGrid<T>::getCellPtr(int x, int y, int z)
+{
+  return & (data_[ref(x, y, z)]);
+}
+
+template <typename T>
 inline const T& VoxelGrid<T>::getCell(int x, int y, int z) const
 {
   return data_[ref(x, y, z)];
@@ -515,6 +524,7 @@ inline void VoxelGrid<T>::setCell(int x, int y, int z, const T& obj)
 template <typename T>
 inline void VoxelGrid<T>::setCell(const Eigen::Vector3i& pos, const T& obj)
 {
+  logWarn("second set cell");
   data_[ref(pos.x(), pos.y(), pos.z())] = obj;
 }
 

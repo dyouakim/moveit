@@ -100,7 +100,7 @@ struct PropDistanceFieldVoxel
   int update_direction_; /**< \brief Direction from which this voxel was updated for occupied distance propagation */
   int negative_update_direction_; /**< \brief Direction from which this voxel was updated  for negative distance
                                      propagation*/
-
+  int counter_;
   static const int UNINITIALIZED = -1; /**< \brief Value that represents an unitialized voxel */
 };
 
@@ -327,6 +327,19 @@ public:
   virtual int getZNumCells() const;
   virtual bool gridToWorld(int x, int y, int z, double& world_x, double& world_y, double& world_z) const;
   virtual bool worldToGrid(double world_x, double world_y, double world_z, int& x, int& y, int& z) const;
+  virtual void markCellExpansionStep (double x, double y, double z, int expansion_step); 
+  virtual void resetCellsMarking(int restore_step);
+
+
+  virtual std::map<std::vector<int>,int> getAddedCells() 
+  {
+    return addedCells_;
+  }
+
+  virtual std::map<std::vector<int>,int> getRemovedCells()
+  {
+    return removedCells_;
+  }
 
   /**
    * \brief Writes the contents of the distance field to the supplied stream.
@@ -384,6 +397,11 @@ public:
   const PropDistanceFieldVoxel& getCell(int x, int y, int z) const
   {
     return voxel_grid_->getCell(x, y, z);
+  }
+
+  PropDistanceFieldVoxel* getCellPtr(int x, int y, int z)
+  {
+    return voxel_grid_->getCellPtr(x, y, z);
   }
 
   /**
@@ -560,6 +578,8 @@ private:
                                                                         integer distance from the closest unoccupied
                                                                         points*/
 
+  std::map<std::vector<int>,int> addedCells_, removedCells_;
+
   double max_distance_; /**< \brief Holds maximum distance  */
   int max_distance_sq_; /**< \brief Holds maximum distance squared in cells */
 
@@ -594,6 +614,7 @@ inline PropDistanceFieldVoxel::PropDistanceFieldVoxel(int distance_square, int n
   closest_negative_point_.x() = PropDistanceFieldVoxel::UNINITIALIZED;
   closest_negative_point_.y() = PropDistanceFieldVoxel::UNINITIALIZED;
   closest_negative_point_.z() = PropDistanceFieldVoxel::UNINITIALIZED;
+  counter_ = INT_MAX;
 }
 
 inline PropDistanceFieldVoxel::PropDistanceFieldVoxel()

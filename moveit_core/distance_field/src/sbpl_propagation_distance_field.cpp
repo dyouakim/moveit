@@ -117,6 +117,26 @@ DistanceMapInterface* SBPLPropagationDistanceField::clone() const
     return df;
 }
 
+void SBPLPropagationDistanceField::markCellExpansionStep (double x, double y, double z, int expansion_step) 
+{
+    m_df.markCellExpansionStep(x,y,z,expansion_step);
+}
+
+std::map<std::vector<int>,int> SBPLPropagationDistanceField::getAddedCells() 
+{
+    return m_df.getAddedCells();
+}
+
+std::map<std::vector<int>,int> SBPLPropagationDistanceField::getRemovedCells()
+{
+    return m_df.getRemovedCells();
+}
+
+void SBPLPropagationDistanceField::resetCellsMarking(int restore_step)
+{
+    m_df.resetCellsMarking(restore_step);
+}
+
 void SBPLPropagationDistanceField::addPointsToMap(
     const std::vector<Eigen::Vector3d>& points)
 {

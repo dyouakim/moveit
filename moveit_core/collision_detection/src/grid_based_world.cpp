@@ -75,8 +75,7 @@ GridWorld::GridWorld(const World& world, sbpl::OccupancyGrid* grid)
     m_object_voxel_map(),
     m_padding(0.0)
 {
-     m_grid = new sbpl::OccupancyGrid(*grid);
-    printObjectsSize();
+    m_grid = new sbpl::OccupancyGrid(*grid);
 }
 
 
@@ -237,13 +236,14 @@ bool GridWorld::moveShapesInGrid(const ObjectConstPtr& object)
 bool GridWorld::insertShapesInGrid(const ObjectConstPtr& object)
 {
     // TODO: optimized version
-    return removeObjectFromGrid(object) && insertObjectInGrid(object);
+    return insertObjectInGrid(object);
+    //return removeObjectFromGrid(object) && insertObjectInGrid(object);
 }
 
 bool GridWorld::removeShapesFromGrid(const ObjectConstPtr& object)
 {
     // TODO: optimized version
-    return removeObjectFromGrid(object) && insertObjectInGrid(object);
+    return removeObjectFromGrid(object) ;//&& insertObjectInGrid(object);
 }
 
 void GridWorld::reset()

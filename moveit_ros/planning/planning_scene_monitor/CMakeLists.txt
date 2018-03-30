@@ -9,7 +9,7 @@ target_link_libraries(${MOVEIT_LIB_NAME}
   moveit_robot_model_loader
   moveit_collision_plugin_loader
   ${catkin_LIBRARIES}
-  ${Boost_LIBRARIES})
+  ${Boost_LIBRARIES} ${DYNAMICEDT3D_LIBRARIES})
 
 add_executable(demo_scene demos/demo_scene.cpp)
 target_link_libraries(demo_scene ${MOVEIT_LIB_NAME} ${catkin_LIBRARIES} ${Boost_LIBRARIES})

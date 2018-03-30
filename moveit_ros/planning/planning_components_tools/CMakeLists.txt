@@ -3,7 +3,7 @@ add_executable(moveit_print_planning_model_info src/print_planning_model_info.cp
 target_link_libraries(moveit_print_planning_model_info moveit_robot_model_loader ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 add_executable(moveit_display_random_state src/display_random_state.cpp)
-target_link_libraries(moveit_display_random_state moveit_planning_scene_monitor ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+target_link_libraries(moveit_display_random_state moveit_planning_scene_monitor ${catkin_LIBRARIES} ${Boost_LIBRARIES} ${DYNAMICEDT3D_LIBRARIES})
 
 add_executable(moveit_visualize_robot_collision_volume src/visualize_robot_collision_volume.cpp)
 target_link_libraries(moveit_visualize_robot_collision_volume moveit_planning_scene_monitor ${catkin_LIBRARIES} ${Boost_LIBRARIES})

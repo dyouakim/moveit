@@ -256,7 +256,7 @@ bool planning_pipeline::PlanningPipeline::generatePlan(const planning_scene::Pla
   if (solved && res.trajectory_)
   {
     std::size_t state_count = res.trajectory_->getWayPointCount();
-    ROS_DEBUG_STREAM("Motion planner reported a solution path with " << state_count << " states");
+    ROS_INFO_STREAM("Motion planner reported a solution path with " << state_count << " states");
     if (check_solution_paths_)
     {
       std::vector<std::size_t> index;
@@ -332,7 +332,6 @@ bool planning_pipeline::PlanningPipeline::generatePlan(const planning_scene::Pla
         ROS_DEBUG("Planned path was found to be valid when rechecked");
     }
   }
-
   // display solution path if needed
   if (display_computed_motion_plans_ && solved)
   {
@@ -372,6 +371,7 @@ bool planning_pipeline::PlanningPipeline::repairPlan(const planning_scene::Plann
       planning_interface::PlanningContextPtr context =
           planner_instance_->getPlanningContext(planning_scene, req, res.error_code_);
       solved = context ? context->solve(res) : false;
+      ROS_ERROR_STREAM("here in repair with solved "<<solved);
     }
   }
   catch (std::runtime_error& ex)

@@ -42,6 +42,9 @@
 #include <moveit/trajectory_processing/trajectory_tools.h>
 #include <moveit/kinematic_constraints/utils.h>
 #include <moveit/move_group/capability_names.h>
+#include <moveit/robot_state/conversions.h>
+#include <moveit_msgs/GetPositionFK.h>
+#include <eigen_conversions/eigen_msg.h>
 
 move_group::MoveGroupMoveAction::MoveGroupMoveAction() : MoveGroupCapability("MoveAction"), move_state_(IDLE)
 {
@@ -60,6 +63,8 @@ void move_group::MoveGroupMoveAction::executeMoveCallback(const moveit_msgs::Mov
 {
   setMoveState(PLANNING);
   context_->planning_scene_monitor_->updateFrameTransforms();
+
+ 
 
   moveit_msgs::MoveGroupResult action_res;
   if (goal->planning_options.plan_only || !context_->allow_trajectory_execution_)
@@ -127,7 +132,7 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
   opt.before_execution_callback_ = boost::bind(&MoveGroupMoveAction::startMoveExecutionCallback, this);
 
   opt.plan_callback_ = boost::bind(&MoveGroupMoveAction::planUsingPlanningPipeline, this, boost::cref(motion_plan_request), _1);
-  //opt.repair_plan_callback_ = boost::bind(&MoveGroupMoveAction::repairPlan, this, boost::cref(motion_plan_request), _1, _2);
+  opt.repair_plan_callback_ = boost::bind(&MoveGroupMoveAction::repairPlan, this, boost::cref(motion_plan_request), _1, _2);
 
   if (goal->planning_options.look_around && context_->plan_with_sensing_)
   {
@@ -137,9 +142,10 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
     context_->plan_with_sensing_->setBeforeLookCallback(boost::bind(&MoveGroupMoveAction::startMoveLookCallback, this));
   }
 
+
   plan_execution::ExecutableMotionPlan plan;
   context_->plan_execution_->planAndExecute(plan, planning_scene_diff, opt);
-
+  ROS_ERROR("here before converting to execute");
   convertToMsg(plan.plan_components_, action_res.trajectory_start, action_res.planned_trajectory);
   if (plan.executed_trajectory_)
     plan.executed_trajectory_->getRobotTrajectoryMsg(action_res.executed_trajectory);
@@ -160,13 +166,11 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanOnly(const moveit_
       (planning_scene::PlanningScene::isEmpty(goal->planning_options.planning_scene_diff)) ?
           static_cast<const planning_scene::PlanningSceneConstPtr &>(lscene) :
           lscene->diff(goal->planning_options.planning_scene_diff);
- 
+
  planning_interface::MotionPlanResponse res;
  try
   {
     context_->planning_pipeline_->generatePlan(the_scene, goal->request, res);
-
-      
   }
   catch (std::runtime_error &ex)
   {
@@ -219,46 +223,78 @@ bool move_group::MoveGroupMoveAction::planUsingPlanningPipeline(const planning_i
 
 bool move_group::MoveGroupMoveAction::repairPlan(const planning_interface::MotionPlanRequest &req, plan_execution::ExecutableMotionPlan &plan, const std::pair<int, int>& invalidPointIdx)
 {
+  ROS_INFO_STREAM("INSIDE REPAIR!!!!!"<<std::get<0>(invalidPointIdx)<<","<<std::get<1>(invalidPointIdx));
+      
   //added a new field in the motionplan request message
   //TODO maybe need to add more information and it is better to create another moveit_msgs
-
   planning_interface::MotionPlanRequest repairReq;
   repairReq = req;
-  if(req.planner_id.find("traplanner"))
+  setMoveState(PLANNING);
+  planning_scene_monitor::LockedPlanningSceneRO lscene(plan.planning_scene_monitor_);
+
+  int num = plan.planning_scene_monitor_->getPlanningScene()->getWorldNonConst().get()->getObjectIds().size();
+  bool solved = false;
+  planning_interface::MotionPlanResponse res;
+  try
   {
-    setMoveState(PLANNING);
-    planning_scene_monitor::LockedPlanningSceneRO lscene(plan.planning_scene_monitor_);
-    bool solved = false;
-    planning_interface::MotionPlanResponse res;
-    try
+    /*if(std::get<1>(invalidPointIdx)!=-1)
     {
-    repairReq.repair_index = std::get<0>(invalidPointIdx);
+      moveit::core::robotStateToRobotStateMsg(plan.planning_scene_monitor_->getPlanningScene()->getCurrentStateNonConst(),repairReq.start_state);
+      const double* positions = plan.plan_components_.back().trajectory_->getWayPoint(std::get<1>(invalidPointIdx)).getVariablePositions();
+      moveit_msgs::RobotState robot_state = repairReq.start_state;
+      robot_state.joint_state.position[0]=positions[0];
+      robot_state.joint_state.position[1]=positions[1];
+      robot_state.joint_state.position[2]=positions[2];
+      robot_state.joint_state.position[3]=positions[3];
+      robot_state.joint_state.position[4]=positions[4];
+      robot_state.joint_state.position[5]=positions[5];
+      robot_state.joint_state.position[6]=positions[6];
+      robot_state.joint_state.position[7]=positions[7];
+      
+      robot_state::RobotState rs = plan.planning_scene_monitor_->getPlanningScene()->getCurrentStateNonConst();
+      robot_state::robotStateMsgToRobotState(robot_state, rs);
+      geometry_msgs::PoseStamped fk_pose;
+      tf::poseEigenToMsg(rs.getGlobalLinkTransform(repairReq.goal_constraints[0].position_constraints[0].link_name), fk_pose.pose);
+      fk_pose.header.frame_id = repairReq.goal_constraints[0].position_constraints[0].header.frame_id;
+      fk_pose.header.stamp = ros::Time::now();
+      
+      repairReq.goal_constraints[0].position_constraints[0].constraint_region.primitive_poses[0].position.x = fk_pose.pose.position.x;
+      repairReq.goal_constraints[0].position_constraints[0].constraint_region.primitive_poses[0].position.y = fk_pose.pose.position.y;
+      repairReq.goal_constraints[0].position_constraints[0].constraint_region.primitive_poses[0].position.z = fk_pose.pose.position.z;
+      repairReq.repair_index = std::get<0>(invalidPointIdx);
+    }*/
+    moveit::core::robotStateToRobotStateMsg(plan.planning_scene_monitor_->getPlanningScene()->getCurrentStateNonConst(), repairReq.start_state);
     solved = context_->planning_pipeline_->repairPlan(plan.planning_scene_, repairReq, res);
-    }
-    catch (std::runtime_error &ex)
-    {
-      ROS_ERROR("Planning pipeline threw an exception: %s", ex.what());
-      res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
-    }
-    catch (...)
-    {
-      ROS_ERROR("Planning pipeline threw an exception");
-      res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
-    }
-    if (res.trajectory_)
-    {
-      plan.plan_components_.resize(1);
-      plan.plan_components_[0].trajectory_ = res.trajectory_;
-      plan.plan_components_[0].description_ = "plan";
-    }
-    plan.error_code_ = res.error_code_;
-    return solved;
   }
-  else
+  catch (std::runtime_error &ex)
+  {
+    ROS_ERROR("Planning pipeline threw an exception: %s", ex.what());
+    res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
+  }
+  catch (...)
+  {
+    ROS_ERROR("Planning pipeline threw an exception");
+    res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
+  }
+  if (res.trajectory_)
+  {
+    plan_execution::ExecutableTrajectory& lastPlanComponent = plan.plan_components_.back();
+    robot_trajectory::RobotTrajectoryPtr meged_traj =  res.trajectory_;
+    
+    /*for(int i = std::get<1>(invalidPointIdx)+1; i<lastPlanComponent.trajectory_->getWayPointCount();i++)
+      meged_traj->addSuffixWayPoint(lastPlanComponent.trajectory_->getWayPoint(i),lastPlanComponent.trajectory_->getWayPointDurationFromPrevious(i));
+    */
+
+    lastPlanComponent.trajectory_ = meged_traj;
+  }
+  plan.error_code_ = res.error_code_;
+  return solved;
+  
+ /* else
   {
     repairReq.repair_index = -1;
     return planUsingPlanningPipeline(repairReq,plan);
-  }
+  }*/
 }
 
 void move_group::MoveGroupMoveAction::startMoveExecutionCallback()

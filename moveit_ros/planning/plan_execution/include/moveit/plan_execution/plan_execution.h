@@ -140,7 +140,7 @@ private:
   moveit_msgs::MoveItErrorCodes executeAndMonitor( ExecutableMotionPlan &plan, const Options &opt);
   bool isRemainingPathValid(const ExecutableMotionPlan &plan);
   bool isRemainingPathValid(const ExecutableMotionPlan &plan, const std::pair<int, int> &path_segment);
-
+  void computeFirstValidPoint(const ExecutableMotionPlan &plan, const std::pair<int, int> &path_segment);
   void planningSceneUpdatedCallback(const planning_scene_monitor::PlanningSceneMonitor::SceneUpdateType update_type);
   void doneWithTrajectoryExecution(const moveit_controller_manager::ExecutionStatus &status);
   void successfulTrajectorySegmentExecution(const ExecutableMotionPlan *plan, std::size_t index);
@@ -160,6 +160,7 @@ private:
 
   ros::Publisher invalidWayPointPub_;
   int invalidWayPointIdx_;
+  int firstValidPointIdx_;
 
   class DynamicReconfigureImpl;
   DynamicReconfigureImpl *reconfigure_impl_;

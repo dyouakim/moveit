@@ -912,6 +912,8 @@ as the new values that correspond to the group */
    */
   bool setToIKSolverFrame(Eigen::Affine3d& pose, const std::string& ik_frame);
 
+  bool computeSelfMotions(const JointModelGroup* group, std::vector<std::vector<double>> &self_motions, const GroupStateValidityCallbackFn& constraint = GroupStateValidityCallbackFn(),
+                 const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions());
   /** \brief If the group this state corresponds to is a chain and a solver is available, then the joint values can be
      set by computing inverse kinematics.
       The pose is assumed to be in the reference frame of the kinematic model. Returns true on success.
@@ -1464,6 +1466,7 @@ as the new values that correspond to the group */
   bool satisfiesBounds(const JointModel* joint, double margin = 0.0) const
   {
     return satisfiesPositionBounds(joint, margin) && (!has_velocity_ || satisfiesVelocityBounds(joint, margin));
+    
   }
   bool satisfiesPositionBounds(const JointModel* joint, double margin = 0.0) const
   {

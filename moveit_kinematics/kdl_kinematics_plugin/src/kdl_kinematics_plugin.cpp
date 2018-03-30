@@ -36,7 +36,6 @@
 
 #include <moveit/kdl_kinematics_plugin/kdl_kinematics_plugin.h>
 #include <class_loader/class_loader.h>
-
 //#include <tf/transform_datatypes.h>
 #include <tf_conversions/tf_kdl.h>
 #include <kdl_parser/kdl_parser.hpp>
@@ -430,6 +429,54 @@ bool KDLKinematicsPlugin::searchPositionIK(const geometry_msgs::Pose &ik_pose, c
                           options);
 }
 
+bool KDLKinematicsPlugin::computeSelfMotions(const std::vector<double> &seed_state, const std::vector<double> &consistency_limits, std::vector<std::vector<double>> &solutions,
+                   const IKCallbackFn &solution_callback, moveit_msgs::MoveItErrorCodes &error_code) const
+{
+
+  KDL::JntArray jnt_seed_state(dimension_);
+  KDL::JntArray jnt_pos_in(dimension_);
+  
+  for (unsigned int i = 0; i < dimension_; i++)
+    jnt_seed_state(i) = seed_state[i];
+  jnt_pos_in = jnt_seed_state;
+
+  KDL::ChainIkSolverVel_pinv_mimic ik_solver_vel(kdl_chain_, joint_model_group_->getMimicJointModels().size(),
+                                                 redundant_joint_indices_.size(), position_ik_);
+ 
+  
+  int ik_valid = ik_solver_vel.ComputeSelfMotions(jnt_pos_in, solutions);
+
+  moveit_msgs::MoveItErrorCodes temp_error_code;
+  error_code.val = error_code.SUCCESS;
+  geometry_msgs::Pose fake_pose;
+  for(int i=0;i<solutions.size();i++)
+  {
+    ROS_ERROR_STREAM("sol of index "<<i<<" is "<<solutions[i][0]<<","<<solutions[i][1]<<","<<solutions[i][2]<<","
+      <<solutions[i][3]<<","<<solutions[i][4]<<","<<solutions[i][5]<<","
+      <<solutions[i][6]<<","<<solutions[i][7]);
+    if (!solution_callback.empty())
+        solution_callback(fake_pose, solutions[i], temp_error_code);
+    else
+      temp_error_code.val = temp_error_code.SUCCESS;
+
+    ROS_ERROR_STREAM("test result "<<temp_error_code.val);
+    if(temp_error_code.val != temp_error_code.SUCCESS)
+      error_code.val = temp_error_code.val;
+  }
+  
+  ROS_ERROR_STREAM("done with solution size "<<solutions.size());
+  if (error_code.val == error_code.SUCCESS)
+  {
+    ik_solver_vel.unlockRedundantJoints();
+    return true;
+  }
+
+  ROS_DEBUG_NAMED("kdl", "An IK that satisifes the constraints and is collision free could not be found");
+  error_code.val = error_code.NO_IK_SOLUTION;
+  return false;
+}
+
+
 bool KDLKinematicsPlugin::searchPositionIK(const geometry_msgs::Pose &ik_pose, const std::vector<double> &ik_seed_state,
                                            double timeout, std::vector<double> &solution,
                                            const IKCallbackFn &solution_callback,
@@ -552,7 +599,7 @@ bool KDLKinematicsPlugin::searchPositionIK(const geometry_msgs::Pose &ik_pose, c
       return true;
     }
   }
-  ROS_DEBUG_NAMED("kdl", "An IK that satisifes the constraints and is collision free could not be found");
+  ROS_ERROR_NAMED("kdl", "An IK that satisifes the constraints and is collision free could not be found");
   error_code.val = error_code.NO_IK_SOLUTION;
   ik_solver_vel.unlockRedundantJoints();
   return false;

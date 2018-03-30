@@ -444,7 +444,10 @@ void moveit::core::RobotState::copyJointGroupPositions(const JointModelGroup* gr
     memcpy(gstate, position_ + il[0], group->getVariableCount() * sizeof(double));
   else
     for (std::size_t i = 0; i < il.size(); ++i)
+    {
       gstate[i] = position_[il[i]];
+      logError("copying value now %d",gstate[i]);
+    }
 }
 
 void moveit::core::RobotState::copyJointGroupPositions(const JointModelGroup* group, Eigen::VectorXd& values) const
@@ -715,7 +718,8 @@ bool moveit::core::RobotState::satisfiesBounds(const JointModelGroup* group, dou
   const std::vector<const JointModel*>& jm = group->getActiveJointModels();
   for (std::size_t i = 0; i < jm.size(); ++i)
     if (!satisfiesBounds(jm[i], margin))
-      return false;
+     return false;
+    
   return true;
 }
 
@@ -1360,9 +1364,15 @@ bool ikCallbackFnAdapter(RobotState* state, const JointModelGroup* group,
   for (std::size_t i = 0; i < bij.size(); ++i)
     solution[bij[i]] = ik_sol[i];
   if (constraint(state, group, &solution[0]))
+  {
+    logError("ik succeed!!");
     error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
+  }
   else
+  {
+    logError("ik failed!!");
     error_code.val = moveit_msgs::MoveItErrorCodes::NO_IK_SOLUTION;
+  }
   return true;
 }
 }
@@ -1414,6 +1424,74 @@ bool moveit::core::RobotState::setFromIK(const JointModelGroup* jmg, const Eigen
 {
   static const std::vector<std::vector<double> > consistency_limits;
   return setFromIK(jmg, poses_in, tips_in, consistency_limits, attempts, timeout, constraint, options);
+}
+
+bool moveit::core::RobotState::computeSelfMotions(const JointModelGroup* jmg, std::vector<std::vector<double>> &self_motions, const GroupStateValidityCallbackFn& constraint,
+                 const kinematics::KinematicsQueryOptions& options)
+{
+  static const std::vector<std::vector<double> > consistency_limit_sets;
+
+   // Load solver
+  const kinematics::KinematicsBaseConstPtr& solver = jmg->getSolverInstance();
+
+  // Check if this jmg has a solver
+  bool valid_solver = true;
+  if (!solver)
+  {
+    valid_solver = false;
+  }
+
+  if(valid_solver)
+  {
+    // Check that no, or only one set of consistency limits have been passed in, and choose that one
+    std::vector<double> consistency_limits;
+    if (consistency_limit_sets.size() > 1)
+    {
+      logError("moveit.robot_state: Invalid number (%d) of sets of consistency limits for a setFromIK request that is "
+               "being solved by a single IK solver",
+               consistency_limit_sets.size());
+      return false;
+    }
+    else if (consistency_limit_sets.size() == 1)
+      consistency_limits = consistency_limit_sets[0];
+
+    
+    // set callback function
+    kinematics::KinematicsBase::IKCallbackFn ik_callback_fn;
+    if (constraint)
+      ik_callback_fn = boost::bind(&ikCallbackFnAdapter, this, jmg, constraint, _1, _2, _3);
+
+     
+    // Bijection
+    const std::vector<unsigned int>& bij = jmg->getKinematicsSolverJointBijection();
+
+    std::vector<double> initial_values;
+    std::vector<double> seed(bij.size());
+
+    copyJointGroupPositions(jmg, initial_values);
+    for (std::size_t i = 0; i < bij.size(); ++i)
+      seed[i] = initial_values[bij[i]];
+
+     // compute a set of self motions
+    //std::vector<std::vector<double>> self_motions;
+    moveit_msgs::MoveItErrorCodes error;
+
+    if (solver->computeSelfMotions(seed, consistency_limits, self_motions, ik_callback_fn, error))
+    {
+      logError("here in state compute self motions size & success %zu, %zu", self_motions.size(), error.val);
+  
+     if(error.val = error.SUCCESS)
+        return true;
+      else
+        return false;
+    }
+    else
+    {
+      logError("here in state compute self motions failure");  
+    }
+  }
+  else
+    return false;
 }
 
 bool moveit::core::RobotState::setFromIK(const JointModelGroup* jmg, const EigenSTL::vector_Affine3d& poses_in,

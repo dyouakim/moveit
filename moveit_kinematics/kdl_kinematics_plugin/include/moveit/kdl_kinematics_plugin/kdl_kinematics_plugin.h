@@ -108,6 +108,9 @@ public:
   virtual bool initialize(const std::string& robot_description, const std::string& group_name,
                           const std::string& base_name, const std::string& tip_name, double search_discretization);
 
+  virtual bool computeSelfMotions(const std::vector<double> &seed_state, const std::vector<double> &consistency_limits, std::vector<std::vector<double>> &solutions,
+                   const IKCallbackFn &solution_callback, moveit_msgs::MoveItErrorCodes &error_code) const;
+
   /**
    * @brief  Return all the joint names in the order they are used internally
    */

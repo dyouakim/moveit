@@ -25,6 +25,7 @@
 
 #include <moveit/kdl_kinematics_plugin/chainiksolver_vel_pinv_mimic.hpp>
 #include <ros/console.h>
+#include <random_numbers/random_numbers.h>
 
 namespace KDL
 {
@@ -237,6 +238,78 @@ int ChainIkSolverVel_pinv_mimic::CartToJntRedundant(const JntArray& q_in, const 
   return ret;
 }
 
+int ChainIkSolverVel_pinv_mimic::ComputeSelfMotions(const JntArray& q_in,std::vector<std::vector<double>>& qdot_out)
+{
+  // Let the ChainJntToJacSolver calculate the jacobian "jac" for
+  // the current joint positions "q_in". This will include the mimic joints
+  if (num_mimic_joints > 0)
+  {
+    jnt2jac.JntToJac(q_in, jac);
+    // Now compute the actual jacobian that involves only the active DOFs
+    jacToJacReduced(jac, jac_reduced);
+  }
+  else
+    jnt2jac.JntToJac(q_in, jac_reduced);
+
+  // Do a singular value decomposition of "jac" with maximum
+  // iterations "maxiter", put the results in "U", "S" and "V"
+  // jac = U*S*Vt
+
+  int ret;
+  if (!position_ik)
+    ret = svd.calculate(jac_reduced, U, S, V, maxiter);
+  else
+    ret = svd_eigen_HH(jac_reduced.data.topLeftCorner(3, chain.getNrOfJoints() - num_mimic_joints), U_translate,
+                       S_translate, V_translate, tmp_translate, maxiter);
+
+  // We have to calculate qdot_out = jac_pinv*v_in
+  // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
+  // qdot_out = V*S_pinv*Ut*v_in
+
+  
+  unsigned int rows;
+  if (!position_ik)
+    rows = jac_reduced.rows();
+  else
+    rows = 3;
+
+  int length = 0;
+  // first we calculate Ut*v_in
+  for (unsigned int i = 0; i < jac_reduced.columns(); i++)
+  { 
+    if (!position_ik)
+    {
+      if(fabs(S(i)) > eps)
+        length ++;
+    }
+    else
+      if(fabs(S_translate(i)) > eps)
+        length ++;
+      
+  }
+  /*for(int i=0;i<V.size();i++)
+    for(int j=0;j<V[i].rows();j++)
+      ROS_ERROR_STREAM("V vs U of "<<i<<","<<j<<":"<<V[i](j)<<","<<U[i](j));*/
+  std::vector<JntArray> null_space;
+  for(unsigned int i=length;i<V.size();i++)
+    null_space.push_back(V[i]);
+
+ 
+  random_numbers::RandomNumberGenerator* rng = new random_numbers::RandomNumberGenerator();
+  double number1 = rng->uniformReal(0,1);
+  double number2 = rng->uniformReal(0,1);
+    
+  for(int j=0;j<null_space[0].rows();j++)
+  {
+    qdot_out[0][j] = q_in(j) + (((null_space[0](j) *number1) +  (null_space[1](j)*number2))*0.01*10);
+    /*ROS_ERROR_STREAM("converted null_space element ["<<i<<"]["<<j<<"] is "<<
+      null_space[0](j)<<","<<null_space[1](j)<<", random num "<<number_arm<<","<<
+      qdot_out[i][j]);*/
+  }
+  
+  return ret;
+}
+
 int ChainIkSolverVel_pinv_mimic::CartToJnt(const JntArray& q_in, const Twist& v_in, JntArray& qdot_out)
 {
   if (redundant_joints_locked)
@@ -271,11 +344,14 @@ int ChainIkSolverVel_pinv_mimic::CartToJnt(const JntArray& q_in, const Twist& v_
   // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
   // qdot_out = V*S_pinv*Ut*v_in
 
+  
   unsigned int rows;
   if (!position_ik)
     rows = jac_reduced.rows();
   else
     rows = 3;
+
+  int length = 0;
 
   // first we calculate Ut*v_in
   for (i = 0; i < jac_reduced.columns(); i++)
@@ -290,11 +366,19 @@ int ChainIkSolverVel_pinv_mimic::CartToJnt(const JntArray& q_in, const Twist& v_
     }
     // If the singular value is too small (<eps), don't invert it but
     // set the inverted singular value to zero (truncated svd)
+    
     if (!position_ik)
+    {
       tmp(i) = sum * (fabs(S(i)) < eps ? 0.0 : 1.0 / S(i));
+      if(fabs(S(i)) > eps)
+      length ++;
+    }
     else
       tmp(i) = sum * (fabs(S_translate(i)) < eps ? 0.0 : 1.0 / S_translate(i));
   }
+  
+
+  // q_dot_d = null_space[0:, 0] * random.random() * 10 + null_space[0:, 1] * random.random() * 10
   // tmp is now: tmp=S_pinv*Ut*v_in, we still have to premultiply
   // it with V to get qdot_out
   for (i = 0; i < jac_reduced.columns(); i++)

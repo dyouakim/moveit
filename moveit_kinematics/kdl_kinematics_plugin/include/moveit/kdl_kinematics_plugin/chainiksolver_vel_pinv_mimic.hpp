@@ -111,6 +111,8 @@ public:
     redundant_joints_locked = false;
   }
 
+  int ComputeSelfMotions(const JntArray& q_in,std::vector<std::vector<double>>& qdot_out);
+
 private:
   bool jacToJacReduced(const Jacobian& jac, Jacobian& jac_mimic);
   bool jacToJacLocked(const Jacobian& jac, Jacobian& jac_locked);

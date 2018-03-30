@@ -150,6 +150,8 @@ public:
   typedef boost::function<void(const geometry_msgs::Pose &ik_pose, const std::vector<double> &ik_solution,
                                moveit_msgs::MoveItErrorCodes &error_code)> IKCallbackFn;
 
+   typedef boost::function<void(const std::vector<double> &solution,
+                               moveit_msgs::MoveItErrorCodes &error_code)> StateValidityCallbackFn;
   /**
    * @brief Given a desired pose of the end-effector, compute the joint angles to reach it
    * @param ik_pose the desired pose of the link
@@ -314,6 +316,12 @@ public:
     // Otherwise throw error because this function should have been implemented
     logError("moveit.kinematics_base: This kinematic solver does not support searchPositionIK with multiple poses");
     return false;
+  }
+
+  virtual bool computeSelfMotions(const std::vector<double> &seed_state, const std::vector<double> &consistency_limits, 
+    std::vector<std::vector<double>> &solution, const IKCallbackFn &solution_callback, moveit_msgs::MoveItErrorCodes &error_code) const
+  {
+    logWarn("Function not implemented for this kineamtic plugin");
   }
 
   /**

@@ -23,7 +23,7 @@ COMPONENTS
   rostime
   pluginlib
   cmake_modules
-)
+smpl)
 find_package(console_bridge REQUIRED)
 find_package(Eigen3 REQUIRED)
 

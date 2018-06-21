@@ -773,10 +773,11 @@ void planning_scene_monitor::PlanningSceneMonitor::excludeRobotLinksFromOctree()
         m->mergeVertices(1e-4);
         shapes[j].reset(m);
       }
-
       occupancy_map_monitor::ShapeHandle h = octomap_monitor_->excludeShape(shapes[j]);
       if (h)
+      {
         link_shape_handles_[links[i]].push_back(std::make_pair(h, j));
+      }
     }
     if (!warned && ((ros::WallTime::now() - start) > ros::WallDuration(30.0)))
     {
@@ -949,11 +950,54 @@ void planning_scene_monitor::PlanningSceneMonitor::currentStateAttachedBodyUpdat
 void planning_scene_monitor::PlanningSceneMonitor::currentWorldObjectUpdateCallback(
     const collision_detection::World::ObjectConstPtr& obj, collision_detection::World::Action action)
 {
+
   if (!octomap_monitor_)
     return;
   if (obj->id_ == planning_scene::PlanningScene::OCTOMAP_NS)
     return;
   
+  //If a new object is added, exclude it even from current octomap
+  if((obj->id_ != planning_scene::PlanningScene::OCTOMAP_NS) && (action & collision_detection::World::CREATE) 
+    && obj->shapes_[0]->type == shapes::ShapeType::BOX)
+  {
+    /*ROS_ERROR_STREAM("Here updating octomap! for object "<<obj->id_<<" and psoe "
+      <<obj->shape_poses_[0].translation().x()<<","<<obj->shape_poses_[0].translation().y()
+      <<","<<obj->shape_poses_[0].translation().z());*/
+    octomap_monitor_->getOcTreePtr()->lockWrite();
+    double res = 0.01;//octomap_monitor_->getOcTreePtr()->getResolution();
+    const shapes::Box* box = dynamic_cast< const shapes::Box*>(obj->shapes_[0].get());
+    int numCubesX = std::ceil(box->size[0]/res);
+    int numCubesY = std::ceil(box->size[1]/res);
+    int numCubesZ = std::ceil(box->size[2]/res);
+    //ROS_ERROR_STREAM("x,y,z nums "<<numCubesX<<","<<numCubesY<<","<<numCubesZ);
+    int xSign = 1,ySign = 1, zSign = 1;
+    double x,y,z;
+    float val = 0.0;
+    for(int i=0;i<numCubesX;i++)
+      for(int j=0;j<numCubesY;j++)
+        for(int k=0;k<numCubesZ;k++)
+        {
+          if(i>numCubesX/2)
+            xSign = -(i-std::ceil(numCubesX/2));
+          else
+            xSign = i;
+          if(j>numCubesY/2)
+            ySign = -(j-std::ceil(numCubesY/2));
+          else
+            ySign = j;
+          if(k>numCubesZ/2)
+            zSign = -(k-std::ceil(numCubesZ/2));
+          else
+            zSign = k;
+          x = obj->shape_poses_[0].translation().x() + (xSign*res);
+          y = obj->shape_poses_[0].translation().y() + (ySign*res);
+          z = obj->shape_poses_[0].translation().z() + (zSign*res);
+          bool result = octomap_monitor_->getOcTreePtr()->deleteNode(x,y,z);//updateNode(x,y,z,val,false);
+          //ROS_ERROR_STREAM("Here updatinig octomap! a node at "<<x<<","<<y<<","<<z<<" is deleted? "<<result);
+        }
+  }
+  octomap_monitor_->getOcTreePtr()->unlockWrite();
+  //ROS_ERROR("Here updatinig octomap DONE!!!!!!!");
   if (action & collision_detection::World::CREATE)
     excludeWorldObjectFromOctree(obj);
   else if (action & collision_detection::World::DESTROY)
@@ -1315,6 +1359,7 @@ void planning_scene_monitor::PlanningSceneMonitor::octomapUpdateCallback()
     boost::unique_lock<boost::shared_mutex> ulock(scene_update_mutex_);
     last_update_time_ = ros::Time::now();
     octomap_monitor_->getOcTreePtr()->lockRead();
+    //excludeRobotLinksFromOctree();
     try
     {
       scene_->processOctomapPtr(octomap_monitor_->getOcTreePtr(), Eigen::Affine3d::Identity());

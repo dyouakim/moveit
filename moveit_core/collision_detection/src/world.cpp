@@ -59,7 +59,7 @@ inline void collision_detection::World::addToObjectInternal(const ObjectPtr& obj
   obj->shape_poses_.push_back(pose);
 }
 
-void collision_detection::World::addToObject(const std::string& id, const std::vector<shapes::ShapeConstPtr>& shapes,
+void collision_detection::World::addToObject(const std::string& id, const bool is_manip_obj, const std::vector<shapes::ShapeConstPtr>& shapes,
                                              const EigenSTL::vector_Affine3d& poses)
 {
   if (shapes.size() != poses.size())
@@ -80,6 +80,8 @@ void collision_detection::World::addToObject(const std::string& id, const std::v
     action |= CREATE;
   }
 
+  obj->is_manip_obj = is_manip_obj;
+
   ensureUnique(obj);
 
   for (std::size_t i = 0; i < shapes.size(); ++i)
@@ -88,9 +90,10 @@ void collision_detection::World::addToObject(const std::string& id, const std::v
   notify(obj, Action(action));
 }
 
-void collision_detection::World::addToObject(const std::string& id, const shapes::ShapeConstPtr& shape,
+void collision_detection::World::addToObject(const std::string& id, const bool is_manip_obj, const shapes::ShapeConstPtr& shape,
                                              const Eigen::Affine3d& pose)
 {
+
   int action = ADD_SHAPE;
 
   ObjectPtr& obj = objects_[id];
@@ -99,6 +102,8 @@ void collision_detection::World::addToObject(const std::string& id, const shapes
     obj.reset(new Object(id));
     action |= CREATE;
   }
+
+  obj->is_manip_obj = is_manip_obj;
 
   ensureUnique(obj);
   addToObjectInternal(obj, shape, pose);
@@ -131,7 +136,7 @@ void collision_detection::World::ensureUnique(ObjectPtr& obj)
 
 bool collision_detection::World::hasObject(const std::string& id) const
 {
-  return objects_.find(id) != objects_.end();
+  return objects_.find(id) != objects_.end(); 
 }
 
 bool collision_detection::World::moveShapeInObject(const std::string& id, const shapes::ShapeConstPtr& shape,

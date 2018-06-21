@@ -73,14 +73,14 @@ public:
    * shapes one by one.
    *  \note This function does NOT call the addToObject() variant that takes
    * a single shape and a single pose as input. */
-    void addToObject(const std::string& id, const std::vector<shapes::ShapeConstPtr>& shapes,
+    void addToObject(const std::string& id, const bool is_manip_obj, const std::vector<shapes::ShapeConstPtr>& shapes,
                    const EigenSTL::vector_Affine3d& poses);
 
     /** \brief Add a shape to an object.
     * If the object already exists, this call will add the shape to the object
     * at the specified pose. Otherwise, the object is created and the
     * specified shape is added. This calls addToObjectInternal(). */
-    void addToObject(const std::string& id, const shapes::ShapeConstPtr& shape, const Eigen::Affine3d& pose);
+    void addToObject(const std::string& id, const bool is_manip_obj, const shapes::ShapeConstPtr& shape, const Eigen::Affine3d& pose);
 
     /** \brief Update the pose of a shape in an object. Shape equality is
     * verified by comparing pointers. Returns true on success. */

@@ -94,22 +94,30 @@ const sbpl::OccupancyGrid* GridWorld::grid() const
     return m_grid;
 }
 
-void collision_detection::GridWorld::addToObject(const std::string& id, const std::vector<shapes::ShapeConstPtr>& shapes,
+void collision_detection::GridWorld::addToObject(const std::string& id, const bool is_manip_obj, const std::vector<shapes::ShapeConstPtr>& shapes,
                                              const EigenSTL::vector_Affine3d& poses)
 {
- collision_detection::World::addToObject(id,shapes,poses);
-  ObjectConstPtr object = collision_detection::World::getObject(id);
-  if(!insertObjectInGrid(object))
-    logError("failed to add the object into the grid!");
+    collision_detection::World::addToObject(id,is_manip_obj, shapes,poses);
+    if(!is_manip_obj)
+    {
+        ObjectConstPtr object = collision_detection::World::getObject(id);
+        if(!insertObjectInGrid(object))
+            logError("failed to add the object into the grid!");
+    }
 }
 
-void collision_detection::GridWorld::addToObject(const std::string& id, const shapes::ShapeConstPtr& shape,
+void collision_detection::GridWorld::addToObject(const std::string& id, const bool is_manip_obj, const shapes::ShapeConstPtr& shape,
                                              const Eigen::Affine3d& pose)
 {
-  collision_detection::World::addToObject(id,shape,pose);
-  ObjectConstPtr object = collision_detection::World::getObject(id);
-  if(!insertObjectInGrid(object))
-    logError("failed to add the object into the grid!");
+    collision_detection::World::addToObject(id,is_manip_obj, shape,pose);
+    if(!is_manip_obj)
+    {
+        ObjectConstPtr object = collision_detection::World::getObject(id);
+        if(!insertObjectInGrid(object))
+            logError("failed to add the object into the grid!");
+    }
+    else
+        logError("Manipulation Object not added to grid");
     
 }
 
@@ -173,7 +181,7 @@ bool GridWorld::insertObjectInGrid(const ObjectConstPtr& object)
     //assert(vit.second);
     m_object_map.insert(std::make_pair(object->id_, object));
     for (const auto& voxel_list : vit.first->second) {
-        logWarn("Adding %zu voxels from collision object '%s' to the distance transform",
+        logDebug("Adding %zu voxels from collision object '%s' to the distance transform",
                 voxel_list.size(), object->id_.c_str());
         m_grid->addPointsToField(voxel_list);
     }
@@ -182,7 +190,7 @@ bool GridWorld::insertObjectInGrid(const ObjectConstPtr& object)
 
 void GridWorld::printObjectsSize()
 {
-        logWarn("Parent objects are %zu ; Grid World with voxel size %zu and objects size %zu",collision_detection::World::getObjectIds().size(),m_object_map.size(),m_object_map.size());
+        logDebug("Parent objects are %zu ; Grid World with voxel size %zu and objects size %zu",collision_detection::World::getObjectIds().size(),m_object_map.size(),m_object_map.size());
 }
 
 bool GridWorld::removeObjectFromGrid(const std::string& object_name)
@@ -193,7 +201,7 @@ bool GridWorld::removeObjectFromGrid(const std::string& object_name)
     if(oit != m_object_map.end() && vit != m_object_voxel_map.end())
     {
        for (const auto& voxel_list : vit->second) {
-            logWarn("1 Removing %zu grid cells from the distance transform", voxel_list.size());
+            logDebug("Removing %zu voxels from the distance transform", voxel_list.size());
             m_grid->removePointsFromField(voxel_list);
         }
         m_object_voxel_map.erase(vit);
@@ -214,7 +222,7 @@ bool GridWorld::removeObjectFromGrid(const std::string& object_name)
         m_object_voxel_map.erase(vit);
         return true;
     }
-    logWarn("after removing failure %s ", object_name.c_str());
+    logDebug("after removing failure %s ", object_name.c_str());
         printObjectsSize();
     return false;
 }
@@ -236,14 +244,14 @@ bool GridWorld::moveShapesInGrid(const ObjectConstPtr& object)
 bool GridWorld::insertShapesInGrid(const ObjectConstPtr& object)
 {
     // TODO: optimized version
-    return insertObjectInGrid(object);
-    //return removeObjectFromGrid(object) && insertObjectInGrid(object);
+    //return insertObjectInGrid(object);
+    return removeObjectFromGrid(object) && insertObjectInGrid(object);
 }
 
 bool GridWorld::removeShapesFromGrid(const ObjectConstPtr& object)
 {
     // TODO: optimized version
-    return removeObjectFromGrid(object) ;//&& insertObjectInGrid(object);
+    return removeObjectFromGrid(object) && insertObjectInGrid(object);
 }
 
 void GridWorld::reset()

@@ -98,12 +98,13 @@ void MotionPlanningFrame::sceneScaleChanged(int value)
     {
       if (ps->getWorld()->hasObject(scaled_object_->id_))
       {
+        bool is_manip = ps->getWorld()->getObject(scaled_object_->id_)->is_manip_obj;
         ps->getWorldNonConst()->removeObject(scaled_object_->id_);
         for (std::size_t i = 0; i < scaled_object_->shapes_.size(); ++i)
         {
           shapes::Shape* s = scaled_object_->shapes_[i]->clone();
           s->scale((double)value / 100.0);
-          ps->getWorldNonConst()->addToObject(scaled_object_->id_, shapes::ShapeConstPtr(s),
+          ps->getWorldNonConst()->addToObject(scaled_object_->id_, is_manip,shapes::ShapeConstPtr(s),
                                               scaled_object_->shape_poses_[i]);
         }
         planning_display_->queueRenderSceneGeometry();
@@ -406,7 +407,8 @@ void MotionPlanningFrame::copySelectedCollisionObject()
         n++;
       name += boost::lexical_cast<std::string>(n);
     }
-    ps->getWorldNonConst()->addToObject(name, obj->shapes_, obj->shape_poses_);
+    bool is_manip = ps->getWorld()->getObject(name)->is_manip_obj;
+    ps->getWorldNonConst()->addToObject(name, is_manip, obj->shapes_, obj->shape_poses_);
     ROS_DEBUG("Copied collision object to '%s'", name.c_str());
   }
   planning_display_->addMainLoopJob(boost::bind(&MotionPlanningFrame::populateCollisionObjectsList, this));
@@ -669,7 +671,7 @@ void MotionPlanningFrame::computeLoadQueryButtonClicked()
 void MotionPlanningFrame::addObject(const collision_detection::WorldPtr& world, const std::string& id,
                                     const shapes::ShapeConstPtr& shape, const Eigen::Affine3d& pose)
 {
-  world->addToObject(id, shape, pose);
+  world->addToObject(id, false, shape, pose);
 
   planning_display_->addMainLoopJob(boost::bind(&MotionPlanningFrame::populateCollisionObjectsList, this));
 
@@ -762,7 +764,7 @@ void MotionPlanningFrame::renameCollisionObject(QListWidgetItem* item)
     {
       known_collision_objects_[item->type()].first = item_text;
       ps->getWorldNonConst()->removeObject(obj->id_);
-      ps->getWorldNonConst()->addToObject(known_collision_objects_[item->type()].first, obj->shapes_,
+      ps->getWorldNonConst()->addToObject(known_collision_objects_[item->type()].first, obj->is_manip_obj, obj->shapes_,
                                           obj->shape_poses_);
       if (scene_marker_)
       {

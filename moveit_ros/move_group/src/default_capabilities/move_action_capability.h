@@ -40,7 +40,12 @@
 #include <moveit/move_group/move_group_capability.h>
 #include <actionlib/server/simple_action_server.h>
 #include <moveit_msgs/MoveGroupAction.h>
+
+#include <smpl/bfs3d/bfs3d.h>
 #include <memory>
+
+#include <thread>
+#include <future>
 
 namespace move_group
 {

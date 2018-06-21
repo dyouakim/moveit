@@ -89,12 +89,16 @@ plan_execution::PlanExecution::PlanExecution(
   invalidWayPointIdx_ = -1;
   firstValidPointIdx_ = -1;
 
-  invalidWayPointPub_ = node_handle_.advertise<std_msgs::Int8>("/plan_execution/invalid_waypoint",100);
+  invalidWayPointPub_ = node_handle_.advertise<std_msgs::Int32>("/plan_execution/invalid_waypoint",100);
+
+  executingTrajIdxSub_= node_handle_.subscribe<std_msgs::Int32>("/executing_traj_idx", 5, &PlanExecution::updateExecutingTrajIdx, this);
+  
   // we want to be notified when new information is available
-  planning_scene_monitor_->addUpdateCallback(boost::bind(&PlanExecution::planningSceneUpdatedCallback, this, _1));
+  //planning_scene_monitor_->addUpdateCallback(boost::bind(&PlanExecution::planningSceneUpdatedCallback, this, _1));
 
   // start the dynamic-reconfigure server
   reconfigure_impl_ = new DynamicReconfigureImpl(this);
+  eePlanPub_ = node_handle_.advertise<visualization_msgs::Marker>("/planned_ee_path",100);
 }
 
 plan_execution::PlanExecution::~PlanExecution()
@@ -105,6 +109,11 @@ plan_execution::PlanExecution::~PlanExecution()
 void plan_execution::PlanExecution::stop()
 {
   preempt_requested_ = true;
+}
+
+void plan_execution::PlanExecution::updateExecutingTrajIdx(const std_msgs::Int32 executingTrajIdx)
+{
+  currentExecutingTrajIdx_ = executingTrajIdx.data;
 }
 
 std::string plan_execution::PlanExecution::getErrorCodeString(const moveit_msgs::MoveItErrorCodes &error_code)
@@ -138,6 +147,27 @@ std::string plan_execution::PlanExecution::getErrorCodeString(const moveit_msgs:
 
 void plan_execution::PlanExecution::planAndExecute(ExecutableMotionPlan &plan, const Options &opt)
 {
+  for(int i=0;i<ee_plan_markers.size();i++)
+  {
+    visualization_msgs::Marker marker = ee_plan_markers[i];
+    marker.action = visualization_msgs::Marker::DELETE;
+    marker.color.a = 0.0; 
+    eePlanPub_.publish(marker);  
+    sleep(0.3);
+
+  }
+  for(int i=0;i<ee_replan_markers.size();i++)
+  {
+    visualization_msgs::Marker marker = ee_replan_markers[i];
+    marker.action = visualization_msgs::Marker::DELETE;
+    marker.color.a = 0.0; 
+    eePlanPub_.publish(marker);  
+    sleep(0.3);
+
+  }
+  ROS_ERROR("Clearing planning markers!!!!!!!!!!!");
+  ee_plan_markers.clear();
+  ee_replan_markers.clear();
   plan.planning_scene_monitor_ = planning_scene_monitor_;
   plan.planning_scene_ = planning_scene_monitor_->getPlanningScene();
   planAndExecuteHelper(plan, opt);
@@ -146,7 +176,27 @@ void plan_execution::PlanExecution::planAndExecute(ExecutableMotionPlan &plan, c
 void plan_execution::PlanExecution::planAndExecute(ExecutableMotionPlan &plan,
                                                    const moveit_msgs::PlanningScene &scene_diff, const Options &opt)
 {
-   
+  for(int i=0;i<ee_plan_markers.size();i++)
+  {
+    visualization_msgs::Marker marker = ee_plan_markers[i];
+    marker.action = visualization_msgs::Marker::DELETE;
+    marker.color.a = 0.0; 
+    eePlanPub_.publish(marker);  
+    sleep(0.3);
+
+  }
+  for(int i=0;i<ee_replan_markers.size();i++)
+  {
+    visualization_msgs::Marker marker = ee_replan_markers[i];
+    marker.action = visualization_msgs::Marker::DELETE;
+    marker.color.a = 0.0; 
+    eePlanPub_.publish(marker);  
+    sleep(0.3);
+
+  }
+  ROS_ERROR("Clearing planning markers!!!!!!!!!!!");
+  ee_plan_markers.clear();
+  ee_replan_markers.clear();
   if (planning_scene::PlanningScene::isEmpty(scene_diff))
     planAndExecute(plan, opt);
   else
@@ -212,34 +262,60 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
       return;
     }
 
+    moveit_msgs::GetPositionFK::Request fk_req;
+    moveit_msgs::GetPositionFK::Response fk_res;
+    ros::ServiceClient service_client=node_handle_.serviceClient<moveit_msgs::GetPositionFK>("/compute_fk");
+    planning_scene::PlanningScene* scene_nonconst = const_cast <planning_scene::PlanningScene*> (plan.planning_scene_.get());
+
+    robot_state::RobotState state = scene_nonconst->getCurrentStateNonConst();
+    
+    moveit_msgs::RobotTrajectory msg;
+
     // abort if no plan was found
     if (solved)
     {
       previously_solved = true;
       invalidWayPointIdx_ = -1;
-       // revert the trajectory for backward search
-      moveit_msgs::RobotTrajectory msg, reverted_msg;
-      plan_execution::ExecutableTrajectory& lastPlanComponent = plan.plan_components_.back();
-      lastPlanComponent.trajectory_->getRobotTrajectoryMsg(msg);
-      reverted_msg.joint_trajectory.header = msg.joint_trajectory.header;
-      reverted_msg.joint_trajectory.joint_names = msg.joint_trajectory.joint_names;
-      
+      // revert the trajectory for backward search
+      if(opt.repair_plan_callback_)
+        plan.plan_components_.back().trajectory_->reverse();//setRobotTrajectoryMsg(reverted_msg);
+      plan.plan_components_.back().trajectory_->getRobotTrajectoryMsg(msg);
       int length = msg.joint_trajectory.points.size();
-      for(int i=length-1;i>=0;i--)
+      
+      for(int i=0; i< length;i++)
       {
-        trajectory_msgs::JointTrajectoryPoint point;
-        point.positions = msg.joint_trajectory.points[i].positions;
-        point.velocities = msg.joint_trajectory.points[i].velocities;
-        point.accelerations = msg.joint_trajectory.points[i].accelerations;
-        point.effort = msg.joint_trajectory.points[i].effort;
-        point.time_from_start = msg.joint_trajectory.points[length-i-1].time_from_start;
-        reverted_msg.joint_trajectory.points.push_back(point);
-        //ROS_WARN_STREAM("point "<<i);
-        //ROS_WARN_STREAM(point);
+        moveit::core::jointTrajPointToRobotState(msg.joint_trajectory,i,state);
+        moveit::core::robotStateToRobotStateMsg(state,fk_req.robot_state);
+       
+        fk_req.header.frame_id = "world";
+        fk_req.header.stamp = ros::Time::now(); 
+
+        fk_req.fk_link_names.push_back("jaw");
+
+        service_client.call(fk_req,fk_res);
+        bool result = fk_res.error_code.val==fk_res.error_code.SUCCESS?1:0;
+        if(result)
+        {
+          visualization_msgs::Marker marker;
+          marker.header.frame_id = "world";
+          marker.header.stamp = ros::Time::now();
+          marker.ns = "ee_planned_marker";
+          marker.id = ee_plan_markers.size();
+          marker.type = visualization_msgs::Marker::ARROW;
+          marker.action = visualization_msgs::Marker::ADD;
+          marker.pose = fk_res.pose_stamped[0].pose;
+          
+          marker.scale.x = 0.1;
+          marker.scale.y = 0.01;
+          marker.scale.z = 0.01;
+          marker.color.a = 1.0;
+          marker.color.r = 0.0;
+          marker.color.g = 1.0;
+          marker.color.b = 0.0;
+          eePlanPub_.publish(marker);
+          ee_plan_markers.push_back(marker);
+        }
       }
-
-      plan.plan_components_.back().trajectory_->reverse();//setRobotTrajectoryMsg(reverted_msg);
-
     }
     else
       return;
@@ -273,7 +349,7 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
         {
           const std::pair<int, int> idx = std::make_pair(invalidWayPointIdx_,firstValidPointIdx_);
           solved = opt.repair_plan_callback_(plan, idx);
-
+          ROS_ERROR_STREAM("Replan done with state "<<plan.error_code_.val);
           if (plan.error_code_.val == moveit_msgs::MoveItErrorCodes::SUCCESS)
           {
             if (opt.before_execution_callback_)
@@ -282,8 +358,73 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
             if (preempt_requested_)
               break;
             // execute the trajectory, and monitor its execution
+            ROS_ERROR("Here before reversing!");
             plan.plan_components_.back().trajectory_->reverse();
-            ROS_WARN_STREAM("HERE BEFORE EXECUTION "<<plan.plan_components_.size());
+            plan.plan_components_.back().trajectory_->getRobotTrajectoryMsg(msg);
+            int length = msg.joint_trajectory.points.size();
+            ROS_ERROR("Here after reversing!");
+            if(replan_attempts>1)
+            {
+                ee_plan_markers.clear();
+                for(int i=0;i<ee_replan_markers.size();i++)
+                {
+                  visualization_msgs::Marker marker = ee_replan_markers[i];
+                  marker.action = visualization_msgs::Marker::ADD;
+                  marker.color.a = 1.0;
+                  marker.color.r = 0.0;
+                  marker.color.g = 1.0;
+                  marker.color.b = 0.0;
+                  marker.ns = "ee_planned_marker";
+                  eePlanPub_.publish(marker); 
+                  ee_plan_markers.push_back(marker); 
+                  sleep(0.3);
+
+                  marker.action = visualization_msgs::Marker::DELETE;
+                  marker.ns = "ee_replanned_marker";
+                  marker.color.a = 0.0; 
+                  eePlanPub_.publish(marker);  
+                  sleep(0.3);
+                }
+                ee_replan_markers.clear();
+                ROS_ERROR("finished changing colors!");
+            }
+
+            for(int i=0; i< length;i++)
+            {
+              moveit::core::jointTrajPointToRobotState(msg.joint_trajectory,i,state);
+              moveit::core::robotStateToRobotStateMsg(state,fk_req.robot_state);
+             
+              fk_req.header.frame_id = "world";
+              fk_req.header.stamp = ros::Time::now(); 
+
+              fk_req.fk_link_names.push_back("jaw");
+
+              service_client.call(fk_req,fk_res);
+              bool result = fk_res.error_code.val==fk_res.error_code.SUCCESS?1:0;
+              if(result)
+              {
+                visualization_msgs::Marker marker;
+                marker.header.frame_id = "world";
+                marker.header.stamp = ros::Time::now();
+                marker.ns = "ee_replanned_marker";
+                marker.type = visualization_msgs::Marker::ARROW;
+                marker.action = visualization_msgs::Marker::ADD;
+                marker.pose = fk_res.pose_stamped[0].pose;
+                
+                marker.scale.x = 0.1;
+                marker.scale.y = 0.01;
+                marker.scale.z = 0.01;
+                marker.color.a = 1.0;
+                marker.color.r = 1.0;
+                marker.color.g = 0.0;
+                marker.color.b = 0.0;
+                marker.id = ee_replan_markers.size();
+                ee_replan_markers.push_back(marker);
+                eePlanPub_.publish(marker);
+              }
+            }
+
+            ROS_ERROR_STREAM("HERE BEFORE EXECUTION "<<plan.plan_components_.size());
             path_became_invalid_ = false; 
             invalidWayPointIdx_ = -1;
             firstValidPointIdx_ = -1;
@@ -327,11 +468,18 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
               getErrorCodeString(plan.error_code_).c_str());
 }
 
+
 bool plan_execution::PlanExecution::isRemainingPathValid(const ExecutableMotionPlan &plan)
 {
   // check the validity of the currently executed path segment only, since there could be
   // changes in the world in between path segments
-  return isRemainingPathValid(plan, trajectory_execution_manager_->getCurrentExpectedTrajectoryIndex());
+  std::pair<int, int> segment = trajectory_execution_manager_->getCurrentExpectedTrajectoryIndex();
+  if(segment.second==-1)
+    segment.second = 1;
+  else
+    segment.second = currentExecutingTrajIdx_+1;
+  ROS_INFO_STREAM("Trajectory index to check for validity "<<segment.second<<" vs. controller idx "<<currentExecutingTrajIdx_+1);
+  return isRemainingPathValid(plan, segment);
 }
 
 bool plan_execution::PlanExecution::isRemainingPathValid(const ExecutableMotionPlan &plan,
@@ -348,17 +496,20 @@ bool plan_execution::PlanExecution::isRemainingPathValid(const ExecutableMotionP
         plan.plan_components_[path_segment.first].allowed_collision_matrix_.get();
     std::size_t wpc = t.getWayPointCount();
     collision_detection::CollisionRequest req;
+    req.contacts = true;
     req.group_name = t.getGroupName();
+    
+  
     for (std::size_t i = std::max(path_segment.second - 1, 0); i < wpc; ++i)
     {
-      /*std_msgs::Int8 inavlidPointIdx;
+      /*std_msgs::Int32 inavlidPointIdx;
         inavlidPointIdx.data = i;
         invalidWayPointPub_.publish(inavlidPointIdx);*/
       collision_detection::CollisionResult res;
       if (acm)
-        plan.planning_scene_->checkCollisionUnpadded(req, res, t.getWayPoint(i), *acm);
+        plan.planning_scene_->checkCollision(req, res, t.getWayPoint(i), *acm);
       else
-        plan.planning_scene_->checkCollisionUnpadded(req, res, t.getWayPoint(i));
+        plan.planning_scene_->checkCollision(req, res, t.getWayPoint(i));
 
       if (res.collision || !plan.planning_scene_->isStateFeasible(t.getWayPoint(i), false))
       {
@@ -366,6 +517,14 @@ bool plan_execution::PlanExecution::isRemainingPathValid(const ExecutableMotionP
         // Dave's debacle
         ROS_ERROR("Trajectory component '%s' is invalid",
                  plan.plan_components_[path_segment.first].description_.c_str());
+
+        ROS_ERROR("Collision found with %zu contact",res.contacts.size());
+        for (collision_detection::CollisionResult::ContactMap::const_iterator it = res.contacts.begin(); it != res.contacts.end();
+         ++it)
+        for (std::size_t j = 0; j < it->second.size(); ++j)
+        {
+          ROS_ERROR("Collision found between %s,%s", it->second[j].body_name_1.c_str(),it->second[j].body_name_2.c_str());
+        }
 
         // call the same functions again, in verbose mode, to show what issues have been detected
         plan.planning_scene_->isStateFeasible(t.getWayPoint(i), true);
@@ -418,7 +577,16 @@ void plan_execution::PlanExecution::computeFirstValidPoint(const ExecutableMotio
     }
   }
 }
-moveit_msgs::MoveItErrorCodes plan_execution::PlanExecution::executeAndMonitor( ExecutableMotionPlan &plan,const Options &opt)
+
+
+void plan_execution::PlanExecution::moveToEscapePoint(ExecutableMotionPlan &plan, const Options &opt, moveit_msgs::MoveItErrorCodes& moveToEscapeResult)
+{
+  
+  moveToEscapeResult = executeAndMonitor(plan,opt);
+  ROS_ERROR_STREAM("in move to escape pointttttttttttttt with result "<<moveToEscapeResult.val);
+}
+
+moveit_msgs::MoveItErrorCodes plan_execution::PlanExecution::executeAndMonitor( ExecutableMotionPlan &plan, const Options &opt)
 {
   moveit_msgs::MoveItErrorCodes result;
 
@@ -574,7 +742,6 @@ void plan_execution::PlanExecution::planningSceneUpdatedCallback(
  if (update_type & (planning_scene_monitor::PlanningSceneMonitor::UPDATE_GEOMETRY |
                      planning_scene_monitor::PlanningSceneMonitor::UPDATE_TRANSFORMS))
   {
-    ROS_WARN("new scene received");
     new_scene_update_ = true;
   }
 

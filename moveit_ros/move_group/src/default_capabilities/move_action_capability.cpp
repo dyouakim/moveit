@@ -46,12 +46,18 @@
 #include <moveit_msgs/GetPositionFK.h>
 #include <eigen_conversions/eigen_msg.h>
 
+#include <smpl/debug/marker_utils.h>
+#include <smpl/debug/colors.h>
+#include <smpl/debug/marker.h>
+#include <smpl/debug/visualize.h>
+
 move_group::MoveGroupMoveAction::MoveGroupMoveAction() : MoveGroupCapability("MoveAction"), move_state_(IDLE)
 {
 }
 
 void move_group::MoveGroupMoveAction::initialize()
 {
+
   // start the move action server
   move_action_server_.reset(new actionlib::SimpleActionServer<moveit_msgs::MoveGroupAction>(
       root_node_handle_, MOVE_ACTION, boost::bind(&MoveGroupMoveAction::executeMoveCallback, this, _1), false));
@@ -127,12 +133,16 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
           clearSceneRobotState(goal->planning_options.planning_scene_diff);
 
   opt.replan_ = goal->planning_options.replan;
-  opt.replan_attempts_ = goal->planning_options.replan_attempts;
+  opt.replan_attempts_ = goal->request.num_planning_attempts;//goal->planning_options.replan_attempts;
   opt.replan_delay_ = goal->planning_options.replan_delay;
   opt.before_execution_callback_ = boost::bind(&MoveGroupMoveAction::startMoveExecutionCallback, this);
 
   opt.plan_callback_ = boost::bind(&MoveGroupMoveAction::planUsingPlanningPipeline, this, boost::cref(motion_plan_request), _1);
-  opt.repair_plan_callback_ = boost::bind(&MoveGroupMoveAction::repairPlan, this, boost::cref(motion_plan_request), _1, _2);
+  
+  if(goal->planning_options.replan)
+  {
+    opt.repair_plan_callback_ = boost::bind(&MoveGroupMoveAction::repairPlan, this, boost::cref(motion_plan_request), _1, _2);
+  }
 
   if (goal->planning_options.look_around && context_->plan_with_sensing_)
   {
@@ -145,11 +155,187 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
 
   plan_execution::ExecutableMotionPlan plan;
   context_->plan_execution_->planAndExecute(plan, planning_scene_diff, opt);
-  ROS_ERROR("here before converting to execute");
   convertToMsg(plan.plan_components_, action_res.trajectory_start, action_res.planned_trajectory);
   if (plan.executed_trajectory_)
     plan.executed_trajectory_->getRobotTrajectoryMsg(action_res.executed_trajectory);
   action_res.error_code = plan.error_code_;
+  int trials = 0;
+  while (plan.error_code_.val== moveit_msgs::MoveItErrorCodes::CONTROL_FAILED && trials<10)
+  {
+    trials++;
+    ROS_ERROR("Controller failed, goal aborted. Compute an Escape Point!");
+
+    planning_scene::PlanningScene* scene_nonconst = const_cast <planning_scene::PlanningScene*> ((context_->planning_scene_monitor_.get())->getPlanningScene().get());
+        
+    collision_detection::GridWorld* grid_world = dynamic_cast<  collision_detection::GridWorld*>(scene_nonconst->getWorldNonConst().get());
+    std::unique_ptr<sbpl::motion::BFS_3D> base_bfs;
+    robot_state::RobotState& robot_state = scene_nonconst->getCurrentStateNonConst();
+
+
+    std::vector<double> goal_config;
+    robot_state::RobotState goal_state = robot_state;//plan.plan_components_.back().trajectory_->getLastWayPoint ();
+    for(int i=0;i<goal_state.getVariableCount();i++)
+    {
+      goal_config.push_back(goal_state.getVariablePosition(goal_state.getVariableNames()[i]));
+      ROS_ERROR_STREAM("Goal config ["<<i<<"] is "<<goal_config[i]);
+    }
+
+    
+    
+    const int xc = grid_world->grid()->numCellsX();
+    const int yc = grid_world->grid()->numCellsY();
+    const int zc = grid_world->grid()->numCellsZ();
+    base_bfs.reset(new sbpl::motion::BFS_3D(xc, yc, zc));
+    const int cell_count = xc * yc * zc;
+    for (int x = 0; x < xc; ++x) {
+      for (int y = 0; y < yc; ++y) {
+        for (int z = 0; z < zc; ++z) {
+            const double radius = 0.4;
+            if (grid_world->grid()->getDistance(x, y, z) <= radius) {
+                base_bfs->setWall(x, y, z);
+            }
+        }
+      }
+    }
+
+    int gx, gy, gz;
+    grid_world->grid()->worldToGrid(
+           goal_config[0], goal_config[1], goal_config[2],
+            gx, gy, gz);
+
+   if (!base_bfs->inBounds(gx, gy, gz)) {
+        ROS_ERROR_STREAM("Computing Escape Point: Heuristic goal is out of BFS bounds");
+    }
+
+   
+    base_bfs->run(gx, gy, gz);
+    
+
+    std::vector<Eigen::Vector3d> centers;
+    for (int x = 0; x < xc; x++) {
+    for (int y = 0; y < yc; y++) {
+    for (int z = 0; z < zc; z++) {
+        if (base_bfs->isWall(x, y, z)) {
+            Eigen::Vector3d p;
+            grid_world->grid()->gridToWorld(x, y, z, p.x(), p.y(), p.z());
+            centers.push_back(p);
+        }
+    }
+    }
+    }
+
+   
+    sbpl::visual::Color color;
+    color.r = 100.0f / 255.0f;
+    color.g = 149.0f / 255.0f;
+    color.b = 238.0f / 255.0f;
+    color.a = 1.0f;
+
+    
+    SV_SHOW_INFO_NAMED("bfs_walls_escape", sbpl::visual::MakeCubesMarker(
+            centers,
+            grid_world->grid()->resolution(),
+            color,
+            "/world",
+            "bfs_walls_escape"));
+
+    double x,y,z;
+    std::vector<double> costs;
+    int min_idx  = -1;
+    double min_cost = 99999;
+    robot_state::RobotState best_escape = robot_state;
+    for(int i=0;i<10;i++)
+    {
+      //robot_state.setToRandomPositions();
+      std::random_device rd;
+      std::default_random_engine generator(rd());
+      std::uniform_real_distribution<double> distribution(-1.0,1.0);
+      float number = (float)rand() / (float)RAND_MAX; //distribution(generator);
+      number = -1 + (2*number);
+      robot_state.setVariablePosition(robot_state.getVariableNames()[0], robot_state.getVariablePosition(robot_state.getVariableNames()[0]) + 2*number);
+      robot_state.setVariablePosition(robot_state.getVariableNames()[1], robot_state.getVariablePosition(robot_state.getVariableNames()[1]) + 2*number);
+      robot_state.setVariablePosition(robot_state.getVariableNames()[2], robot_state.getVariablePosition(robot_state.getVariableNames()[2]) + 0.5*number);
+      robot_state.setVariablePosition(robot_state.getVariableNames()[3], robot_state.getVariablePosition(robot_state.getVariableNames()[3]) + 2*number);
+      
+
+      //robot_state.setVariablePosition(robot_state.getVariableNames()[2], goal_config[2]);
+      robot_state.setVariablePosition(robot_state.getVariableNames()[4], goal_config[4]);
+      robot_state.setVariablePosition(robot_state.getVariableNames()[5], goal_config[5]);
+      robot_state.setVariablePosition(robot_state.getVariableNames()[6], goal_config[6]);
+      robot_state.setVariablePosition(robot_state.getVariableNames()[7], goal_config[7]);
+
+      x = robot_state.getVariablePosition(robot_state.getVariableNames()[0]);
+      y = robot_state.getVariablePosition(robot_state.getVariableNames()[1]);
+      z = robot_state.getVariablePosition(robot_state.getVariableNames()[2]);
+
+      if(scene_nonconst->isStateColliding(robot_state, goal->request.group_name, true))
+      {
+        ROS_ERROR_STREAM("Generated random config is in collision, try again!");
+        i--;
+      }
+
+      Eigen::Vector3i dp;
+      grid_world->grid()->worldToGrid(x,y,z,dp.x(), dp.y(), dp.z());
+     
+      if (!base_bfs->inBounds(x, y, z)) {
+          costs.push_back(99999);
+      }
+      else if (base_bfs->getDistance(x, y, z) == sbpl::motion::BFS_3D::WALL) {
+          costs.push_back(99999);
+      }
+      else {
+          costs.push_back(base_bfs->getDistance(dp.x(), dp.y(), dp.z()));
+      }
+
+      if(costs[i]<min_cost)
+      {
+        min_cost = costs[i];
+        min_idx = i;
+        best_escape = robot_state;
+      }
+      ROS_ERROR_STREAM("Random config["<<i<<"] is "<<x<<","<<y<<","<<z<<","<<robot_state.getVariablePosition(robot_state.getVariableNames()[3])
+        <<" with a cost of "<<costs[i]);
+    }
+    plan.plan_components_.back().trajectory_->clear();
+    plan.plan_components_.back().trajectory_->addSuffixWayPoint(best_escape,1);
+
+    plan_execution::PlanExecution::Options escape_opt = opt;
+    plan_execution::ExecutableMotionPlan escapePlan;
+    moveit_msgs::MoveItErrorCodes moveToEscapeResult, moveFromEscapeResult;
+    
+
+    moveit_msgs::MotionPlanRequest* escape_plan_request = const_cast <moveit_msgs::MotionPlanRequest*> (&motion_plan_request);
+    escape_plan_request->request_id = motion_plan_request.request_id+1;
+    moveit::core::robotStateToRobotStateMsg(best_escape,escape_plan_request->start_state);
+    escape_opt.plan_callback_ = boost::bind(&MoveGroupMoveAction::planUsingPlanningPipeline, this, boost::cref(*escape_plan_request), _1);
+    
+    std::thread moveingToEscapePoint (&plan_execution::PlanExecution::moveToEscapePoint, context_->plan_execution_, std::ref(plan), std::ref(opt), std::ref(moveToEscapeResult));
+    ROS_ERROR_STREAM("Moving to Escape Point started!");
+    escapePlan.planning_scene_ = (context_->planning_scene_monitor_.get())->getPlanningScene();
+    escapePlan.planning_scene_monitor_ = context_->planning_scene_monitor_;
+    std::thread escapePointPlanning (escape_opt.plan_callback_, std::ref(escapePlan));
+    ROS_ERROR_STREAM("Planning thread started!");
+    
+    moveingToEscapePoint.join();
+    ROS_ERROR_STREAM("Moving to Escape Point done!");
+    
+    escapePointPlanning.join();
+    ROS_ERROR_STREAM("Planning thread done!");
+
+    ROS_ERROR_STREAM("BACK FROM BOTH THREAD!!!!!!!"<<escapePlan.error_code_.val<<","<<moveToEscapeResult.val);
+    if(moveToEscapeResult.val == moveit_msgs::MoveItErrorCodes::SUCCESS && escapePlan.error_code_.val == moveit_msgs::MoveItErrorCodes::SUCCESS)
+    {
+      ROS_ERROR_STREAM("moving to escape point and planning to goal done, move to goal!");
+      context_->plan_execution_->moveToEscapePoint(escapePlan,escape_opt,moveFromEscapeResult);
+    }
+    else
+    {
+      ROS_ERROR_STREAM("Something went wrong trying to move to the compute Escape Point!");
+    }
+
+    action_res.error_code = escapePlan.error_code_;
+  }  
+
 }
 
 void move_group::MoveGroupMoveAction::executeMoveCallback_PlanOnly(const moveit_msgs::MoveGroupGoalConstPtr &goal,

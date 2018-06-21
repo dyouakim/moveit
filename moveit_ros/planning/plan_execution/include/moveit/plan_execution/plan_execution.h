@@ -44,7 +44,9 @@
 #include <moveit/planning_scene_monitor/trajectory_monitor.h>
 #include <moveit/sensor_manager/sensor_manager.h>
 #include <pluginlib/class_loader.h>
-#include <std_msgs/Int8.h>
+#include <std_msgs/Int32.h>
+
+#include <moveit_msgs/GetPositionFK.h>
 
 /** \brief This namespace includes functionality specific to the execution and monitoring of motion plans */
 namespace plan_execution
@@ -94,6 +96,8 @@ public:
                 const trajectory_execution_manager::TrajectoryExecutionManagerPtr &trajectory_execution);
   ~PlanExecution();
 
+  void updateExecutingTrajIdx(const std_msgs::Int32 executingTrajIdx);
+
   const planning_scene_monitor::PlanningSceneMonitorPtr &getPlanningSceneMonitor() const
   {
     return planning_scene_monitor_;
@@ -135,6 +139,9 @@ public:
 
   std::string getErrorCodeString(const moveit_msgs::MoveItErrorCodes &error_code);
 
+  void moveToEscapePoint(ExecutableMotionPlan &plan, const Options &opt, moveit_msgs::MoveItErrorCodes& moveToEscapeResult);
+ 
+
 private:
   void planAndExecuteHelper(ExecutableMotionPlan &plan, const Options &opt);
   moveit_msgs::MoveItErrorCodes executeAndMonitor( ExecutableMotionPlan &plan, const Options &opt);
@@ -159,11 +166,15 @@ private:
   bool path_became_invalid_;
 
   ros::Publisher invalidWayPointPub_;
+  ros::Subscriber executingTrajIdxSub_;
   int invalidWayPointIdx_;
   int firstValidPointIdx_;
+  int currentExecutingTrajIdx_;
 
   class DynamicReconfigureImpl;
   DynamicReconfigureImpl *reconfigure_impl_;
+  ros::Publisher eePlanPub_;
+  std::vector<visualization_msgs::Marker> ee_plan_markers, ee_replan_markers;
 };
 }
 #endif

@@ -107,6 +107,8 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
   if (planning_scene::PlanningScene::isEmpty(goal->planning_options.planning_scene_diff))
   {
     planning_scene_monitor::LockedPlanningSceneRO lscene(context_->planning_scene_monitor_);
+
+    
     const robot_state::RobotState &current_state = lscene->getCurrentState();
 
     // check to see if the desired constraints are already met
@@ -120,6 +122,20 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
         return;
       }
   }
+
+
+  //Check if thr grid has changed resolution to replace the planning scene for this request
+ 
+
+  /*if (grid_world->grid()->resolution()!=goal->request.grid_res)
+  {
+    moveit_msgs::PlanningScene scene_msg; 
+    scene_nonconst->getPlanningSceneMsg(scene_msg);
+    scene_nonconst->changeGridParams(goal->request.workspace_parameters,goal->request.grid_res,0.8,scene_msg.world);
+    grid_world = dynamic_cast<  collision_detection::GridWorld*>(scene_nonconst->getWorldNonConst().get());
+  }*/
+
+
 
   plan_execution::PlanExecution::Options opt;
 
@@ -139,10 +155,10 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
 
   opt.plan_callback_ = boost::bind(&MoveGroupMoveAction::planUsingPlanningPipeline, this, boost::cref(motion_plan_request), _1);
   
-  if(goal->planning_options.replan)
+  /*if(goal->planning_options.replan)
   {
     opt.repair_plan_callback_ = boost::bind(&MoveGroupMoveAction::repairPlan, this, boost::cref(motion_plan_request), _1, _2);
-  }
+  }*/
 
   if (goal->planning_options.look_around && context_->plan_with_sensing_)
   {
@@ -160,15 +176,18 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
     plan.executed_trajectory_->getRobotTrajectoryMsg(action_res.executed_trajectory);
   action_res.error_code = plan.error_code_;
   int trials = 0;
-  while (plan.error_code_.val== moveit_msgs::MoveItErrorCodes::CONTROL_FAILED && trials<10)
+  while (action_res.error_code.val== moveit_msgs::MoveItErrorCodes::CONTROL_FAILED && trials<10)
   {
     trials++;
     ROS_ERROR("Controller failed, goal aborted. Compute an Escape Point!");
+    ROS_ERROR_STREAM("At the e#beginning with the result  "<<action_res.error_code.val);
 
-    planning_scene::PlanningScene* scene_nonconst = const_cast <planning_scene::PlanningScene*> ((context_->planning_scene_monitor_.get())->getPlanningScene().get());
-        
-    collision_detection::GridWorld* grid_world = dynamic_cast<  collision_detection::GridWorld*>(scene_nonconst->getWorldNonConst().get());
     std::unique_ptr<sbpl::motion::BFS_3D> base_bfs;
+    planning_scene::PlanningScene* scene_nonconst = const_cast <planning_scene::PlanningScene*> ((context_->planning_scene_monitor_.get())->getPlanningScene().get());
+      
+    collision_detection::GridWorld* grid_world = dynamic_cast<  collision_detection::GridWorld*>(scene_nonconst->getWorldNonConst().get());
+  
+
     robot_state::RobotState& robot_state = scene_nonconst->getCurrentStateNonConst();
 
 
@@ -181,7 +200,25 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
     }
 
     
+    moveit_msgs::GetPositionFK::Request fk_req;
+    moveit_msgs::GetPositionFK::Response fk_res;
+    ros::ServiceClient service_client = root_node_handle_.serviceClient<moveit_msgs::GetPositionFK>("/compute_fk");
+    fk_req.header.frame_id = "world";
+    fk_req.header.stamp = ros::Time::now(); 
+    fk_req.fk_link_names.push_back("jaw");
     
+    moveit::core::robotStateToRobotStateMsg(robot_state,fk_req.robot_state);
+    
+    service_client.call(fk_req,fk_res);
+    bool result = fk_res.error_code.val==fk_res.error_code.SUCCESS?1:0;
+    
+    double ee_x,ee_y,ee_z;
+
+    ee_x = fk_res.pose_stamped[0].pose.position.x;
+    ee_y = fk_res.pose_stamped[0].pose.position.y;
+    ee_z = fk_res.pose_stamped[0].pose.position.z;
+
+
     const int xc = grid_world->grid()->numCellsX();
     const int yc = grid_world->grid()->numCellsY();
     const int zc = grid_world->grid()->numCellsZ();
@@ -199,18 +236,16 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
     }
 
     int gx, gy, gz;
-    grid_world->grid()->worldToGrid(
-           goal_config[0], goal_config[1], goal_config[2],
+    grid_world->grid()->worldToGrid(ee_x,ee_y,ee_z,
+           //goal_config[0], goal_config[1], goal_config[2],
             gx, gy, gz);
 
    if (!base_bfs->inBounds(gx, gy, gz)) {
         ROS_ERROR_STREAM("Computing Escape Point: Heuristic goal is out of BFS bounds");
     }
-
-   
+    
     base_bfs->run(gx, gy, gz);
     
-
     std::vector<Eigen::Vector3d> centers;
     for (int x = 0; x < xc; x++) {
     for (int y = 0; y < yc; y++) {
@@ -239,62 +274,126 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
             "/world",
             "bfs_walls_escape"));
 
+    ROS_ERROR_STREAM("Here after showing heursitics!");
+
+
     double x,y,z;
     std::vector<double> costs;
     int min_idx  = -1;
     double min_cost = 99999;
     robot_state::RobotState best_escape = robot_state;
-    for(int i=0;i<10;i++)
+     ROS_ERROR_STREAM("Here after setting state1111d!");
+    robot_state::RobotState current = robot_state;
+     ROS_ERROR_STREAM("Here after setting state2222!");
+    std::vector<robot_state::RobotState> computed_states;
+
+     ROS_ERROR_STREAM("Here after setting state333!");
+    double step = 0.2;
+    int correction = 4;
+    for(int i=-4;i<=4;i++)
     {
+      if(i==0)
+      {
+        correction = 3;
+        continue;
+      }
+
+      ROS_ERROR_STREAM("Here before generating random state! "<<step*i<<","<<(step/2)*i);
       //robot_state.setToRandomPositions();
-      std::random_device rd;
+     /* std::random_device rd;
       std::default_random_engine generator(rd());
-      std::uniform_real_distribution<double> distribution(-1.0,1.0);
+      std::uniform_real_distribution<double> distribution(-1.0,1.0);*/
       float number = (float)rand() / (float)RAND_MAX; //distribution(generator);
       number = -1 + (2*number);
-      robot_state.setVariablePosition(robot_state.getVariableNames()[0], robot_state.getVariablePosition(robot_state.getVariableNames()[0]) + 2*number);
-      robot_state.setVariablePosition(robot_state.getVariableNames()[1], robot_state.getVariablePosition(robot_state.getVariableNames()[1]) + 2*number);
-      robot_state.setVariablePosition(robot_state.getVariableNames()[2], robot_state.getVariablePosition(robot_state.getVariableNames()[2]) + 0.5*number);
-      robot_state.setVariablePosition(robot_state.getVariableNames()[3], robot_state.getVariablePosition(robot_state.getVariableNames()[3]) + 2*number);
+      robot_state.setVariablePosition(current.getVariableNames()[0], current.getVariablePosition(current.getVariableNames()[0]) + (step*i)); //(2*number));
+      robot_state.setVariablePosition(current.getVariableNames()[1], current.getVariablePosition(current.getVariableNames()[1]) + (step*i));//(2*number));
+      robot_state.setVariablePosition(current.getVariableNames()[2], current.getVariablePosition(current.getVariableNames()[2]) + ((step/2)*i));//(0.5*number));
+      robot_state.setVariablePosition(current.getVariableNames()[3], current.getVariablePosition(current.getVariableNames()[3]) + ((step/2)*i));//(2*number));
       
 
-      //robot_state.setVariablePosition(robot_state.getVariableNames()[2], goal_config[2]);
-      robot_state.setVariablePosition(robot_state.getVariableNames()[4], goal_config[4]);
-      robot_state.setVariablePosition(robot_state.getVariableNames()[5], goal_config[5]);
-      robot_state.setVariablePosition(robot_state.getVariableNames()[6], goal_config[6]);
-      robot_state.setVariablePosition(robot_state.getVariableNames()[7], goal_config[7]);
+      //robot_state.setVariablePosition(robot_state.getVariableNames()[3], goal_config[3]);
+      robot_state.setVariablePosition(current.getVariableNames()[4], goal_config[4]);
+      robot_state.setVariablePosition(current.getVariableNames()[5], goal_config[5]);
+      robot_state.setVariablePosition(current.getVariableNames()[6], goal_config[6]);
+      robot_state.setVariablePosition(current.getVariableNames()[7], goal_config[7]);
 
-      x = robot_state.getVariablePosition(robot_state.getVariableNames()[0]);
-      y = robot_state.getVariablePosition(robot_state.getVariableNames()[1]);
-      z = robot_state.getVariablePosition(robot_state.getVariableNames()[2]);
+      x = robot_state.getVariablePosition(current.getVariableNames()[0]);
+      y = robot_state.getVariablePosition(current.getVariableNames()[1]);
+      z = robot_state.getVariablePosition(current.getVariableNames()[2]);
 
+      
       if(scene_nonconst->isStateColliding(robot_state, goal->request.group_name, true))
       {
         ROS_ERROR_STREAM("Generated random config is in collision, try again!");
-        i--;
+        //i--;
+        continue;
       }
+      
+      ROS_ERROR_STREAM("before converting robot state to joint state");
+
+      moveit::core::robotStateToRobotStateMsg(robot_state,fk_req.robot_state);
+    
+      service_client.call(fk_req,fk_res);
+      bool result = fk_res.error_code.val==fk_res.error_code.SUCCESS?1:0;
+    
+      ROS_ERROR_STREAM("after calling FK!");
 
       Eigen::Vector3i dp;
-      grid_world->grid()->worldToGrid(x,y,z,dp.x(), dp.y(), dp.z());
-     
-      if (!base_bfs->inBounds(x, y, z)) {
-          costs.push_back(99999);
+      grid_world->grid()->worldToGrid(fk_res.pose_stamped[0].pose.position.x,fk_res.pose_stamped[0].pose.position.y,fk_res.pose_stamped[0].pose.position.z,
+                                      dp.x(), dp.y(), dp.z());
+
+      ROS_ERROR_STREAM("Random config["<<i+correction<<"] is "<<x<<","<<y<<","<<z<<","<<robot_state.getVariablePosition(robot_state.getVariableNames()[3]));
+      ROS_ERROR_STREAM("The equivalent EE pose "<<fk_res.pose_stamped[0].pose.position.x<<","<<fk_res.pose_stamped[0].pose.position.y<<","<<fk_res.pose_stamped[0].pose.position.z);
+      ROS_ERROR_STREAM("the grid values "<<dp.x()<<","<<dp.y()<<","<<dp.z());
+
+      if (!base_bfs->inBounds(dp.x(), dp.y(), dp.z())) {
+          //i--;
+          ROS_ERROR_STREAM("Out of bound state !");
+          continue;
       }
-      else if (base_bfs->getDistance(x, y, z) == sbpl::motion::BFS_3D::WALL) {
-          costs.push_back(99999);
+      else if (base_bfs->getDistance(x, y, z) == sbpl::motion::BFS_3D::WALL || base_bfs->getDistance(dp.x(), dp.y(), dp.z()) ==0) {
+        //i--;
+        ROS_ERROR_STREAM("Wall state !");
+        continue;
       }
       else {
-          costs.push_back(base_bfs->getDistance(dp.x(), dp.y(), dp.z()));
+        computed_states.push_back(robot_state);
+        
+        ROS_ERROR_STREAM("Here before computing dist!");
+        double dist = ((double)(base_bfs->getDistance(dp.x(), dp.y(), dp.z())))*((double)grid_world->grid()->resolution());
+        costs.push_back(dist);
+        ROS_ERROR_STREAM("Dist is "<<dist<<" and before "<<base_bfs->getDistance(dp.x(), dp.y(), dp.z())<<" res "<<grid_world->grid()->resolution());
       }
 
-      if(costs[i]<min_cost)
+      ROS_ERROR_STREAM(" The cost of the state is "<<costs[i+correction]);
+    }
+
+    /*std::nth_element(costs.begin(), costs.begin() + costs.size() / 2, costs.end());
+
+    min_cost = costs[costs.size() / 2];
+    best_escape = computed_states[costs.size() / 2];
+    ROS_ERROR_STREAM("The chosen config index & cost "<<costs.size() / 2<<","<<min_cost);*/
+
+    std::sort(costs.begin(),costs.end());
+    for(int i=0;i<costs.size();i++)
+    {
+      if(costs[i]<8*0.2 && costs[i]>=5*0.2 && costs[i]<min_cost)
       {
         min_cost = costs[i];
         min_idx = i;
-        best_escape = robot_state;
+        best_escape = computed_states[i];
+        ROS_ERROR_STREAM("The chosen config index is "<<min_idx);
+        break;
       }
-      ROS_ERROR_STREAM("Random config["<<i<<"] is "<<x<<","<<y<<","<<z<<","<<robot_state.getVariablePosition(robot_state.getVariableNames()[3])
-        <<" with a cost of "<<costs[i]);
+    }
+
+    
+    if(min_idx==-1)
+    {  
+      min_idx = 0;
+      min_cost = costs[0];
+      best_escape = computed_states[0];
+      ROS_ERROR_STREAM("None fullfill the condition, pick the min. The chosen config cost is "<<min_cost);
     }
     plan.plan_components_.back().trajectory_->clear();
     plan.plan_components_.back().trajectory_->addSuffixWayPoint(best_escape,1);
@@ -318,9 +417,10 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
     
     moveingToEscapePoint.join();
     ROS_ERROR_STREAM("Moving to Escape Point done!");
-    
+
     escapePointPlanning.join();
     ROS_ERROR_STREAM("Planning thread done!");
+
 
     ROS_ERROR_STREAM("BACK FROM BOTH THREAD!!!!!!!"<<escapePlan.error_code_.val<<","<<moveToEscapeResult.val);
     if(moveToEscapeResult.val == moveit_msgs::MoveItErrorCodes::SUCCESS && escapePlan.error_code_.val == moveit_msgs::MoveItErrorCodes::SUCCESS)
@@ -333,7 +433,8 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
       ROS_ERROR_STREAM("Something went wrong trying to move to the compute Escape Point!");
     }
 
-    action_res.error_code = escapePlan.error_code_;
+    action_res.error_code = moveFromEscapeResult;
+    ROS_ERROR_STREAM("After executing the plan the result is "<<moveFromEscapeResult.val);
   }  
 
 }

@@ -118,6 +118,7 @@ public:
 
   void setGridParams(moveit_msgs::WorkspaceParameters& workspace, double resolution, double max_dist);
 
+  
   /** \brief Set the name of the planning scene */
   void setName(const std::string& name)
   {
@@ -400,6 +401,8 @@ public:
   bool isStateColliding(const moveit_msgs::RobotState& state, const std::string& group = "",
                         bool verbose = false) const;
 
+  bool isStateColliding(const robot_state::RobotState &state, const std::string &group,
+                                                     double& distToObst, bool verbose) const;
   /** \brief Check whether the current state is in collision, and if needed, updates the collision transforms of the
    * current state before the computation. */
   void checkCollision(const collision_detection::CollisionRequest& req, collision_detection::CollisionResult& res);

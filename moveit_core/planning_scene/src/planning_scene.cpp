@@ -708,10 +708,11 @@ void planning_scene::PlanningScene::checkCollision(const collision_detection::Co
                                                    const robot_state::RobotState &kstate) const
 {
   // check collision with the world using the padded version
-
   
   getCollisionWorld()->checkRobotCollision(req, res, *getCollisionRobot(), kstate, getAllowedCollisionMatrix());
-
+  double distToWorld;
+  if(req.distance)
+    distToWorld = res.distance;
   if (!res.collision || (req.contacts && res.contacts.size() < req.max_contacts))
   {
     // do self-collision checking with the unpadded version of the robot
@@ -728,6 +729,9 @@ void planning_scene::PlanningScene::checkCollision(const collision_detection::Co
     }
     
   }
+
+  if(req.distance)
+    res.distance = distToWorld;
 }
 
 void planning_scene::PlanningScene::checkSelfCollision(const collision_detection::CollisionRequest &req,
@@ -749,10 +753,14 @@ void planning_scene::PlanningScene::checkCollision(const collision_detection::Co
   logWarn(ss.str().c_str());*/
   // check collision with the world using the padded version
   getCollisionWorld()->checkRobotCollision(req, res, *getCollisionRobot(), kstate, acm);
-
+  double distToWorld;
+  if(req.distance)
+    distToWorld = res.distance;
   // do self-collision checking with the unpadded version of the robot
   if (!res.collision || (req.contacts && res.contacts.size() < req.max_contacts))
     getCollisionRobotUnpadded()->checkSelfCollision(req, res, kstate, acm);
+  if(req.distance)
+    res.distance = distToWorld;
 }
 
 void planning_scene::PlanningScene::checkCollisionUnpadded(const collision_detection::CollisionRequest &req,
@@ -1522,6 +1530,7 @@ void planning_scene::PlanningScene::processOctomapMsg(const octomap_msgs::Octoma
     }
     std::shared_ptr<octomap::OcTree> om(static_cast<octomap::OcTree *>(octomap_msgs::msgToMap(map)));
     logWarn("New message received!");
+    //To check current mode: navigation or manipulation
     if (!map.header.frame_id.empty())
     {
       const Eigen::Affine3d &t = getTransforms().getTransform(map.header.frame_id);
@@ -2402,6 +2411,34 @@ bool planning_scene::PlanningScene::isStateColliding(const robot_state::RobotSta
   req.contacts = true;
   collision_detection::CollisionResult res;
   checkCollision(req, res, state);
+
+  return res.collision;
+}
+
+bool planning_scene::PlanningScene::isStateColliding(const robot_state::RobotState &state, const std::string &group,
+                                                     double& distToObst, bool verbose) const
+{
+  
+  moveit_msgs::AllowedCollisionMatrix currentACM; 
+  getAllowedCollisionMatrix().getMessage(currentACM);
+  for (int i=0;i<currentACM.entry_names.size();i++)
+    {
+    for(int j=0;j<currentACM.entry_names.size();j++)
+    {
+     
+        int en = currentACM.entry_values[i].enabled[j]?1:0;
+        logDebug("Row[%zu] %s and Column [%zu] %s  Have a value %zu",i,currentACM.entry_names[i].c_str(),j,currentACM.entry_names[j].c_str(),en);
+      }
+    }
+
+  collision_detection::CollisionRequest req;
+  req.verbose = verbose;
+  req.group_name = group;
+  req.contacts = true;
+  req.distance = true;
+  collision_detection::CollisionResult res;
+  checkCollision(req, res, state);
+  distToObst = res.distance;
   return res.collision;
 }
 

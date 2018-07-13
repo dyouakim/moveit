@@ -402,6 +402,11 @@ public:
     }
   }
 
+  void setMotionPlanRequestType(int request_type)
+  {
+    motion_plan_reuqest_type_ = request_type;
+  }
+
   bool setJointValueTarget(const geometry_msgs::Pose &eef_pose, const std::string &end_effector_link,
                            const std::string &frame, bool approx)
   {
@@ -1071,6 +1076,7 @@ public:
     goal.request.workspace_parameters = workspace_parameters_;
     goal.request.request_id = request_num_;
     goal.request.repair_index = -1;
+    goal.request.request_type = motion_plan_reuqest_type_;
     request_num_++;
 
     if (considered_start_state_)
@@ -1277,6 +1283,7 @@ private:
   bool can_replan_;
   double replan_delay_;
   int request_num_;
+  int motion_plan_reuqest_type_;
   // joint state goal
   robot_state::RobotStatePtr joint_state_target_;
   const robot_model::JointModelGroup *joint_model_group_;
@@ -1412,6 +1419,11 @@ void moveit::planning_interface::MoveGroupInterface::setNumPlanningAttempts(unsi
 void moveit::planning_interface::MoveGroupInterface::setMaxVelocityScalingFactor(double max_velocity_scaling_factor)
 {
   impl_->setMaxVelocityScalingFactor(max_velocity_scaling_factor);
+}
+
+void moveit::planning_interface::MoveGroupInterface::setMotionPlanRequestType(int request_type)
+{
+  impl_->setMotionPlanRequestType(request_type);
 }
 
 void moveit::planning_interface::MoveGroupInterface::setMaxAccelerationScalingFactor(

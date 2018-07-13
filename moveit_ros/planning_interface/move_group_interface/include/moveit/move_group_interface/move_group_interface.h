@@ -282,6 +282,8 @@ public:
    * objects are allowed to touch the support surface */
   void setSupportSurfaceName(const std::string& name);
 
+  void setMotionPlanRequestType(int request_type);
+
   /**
    * \name Setting a joint state target (goal)
    *

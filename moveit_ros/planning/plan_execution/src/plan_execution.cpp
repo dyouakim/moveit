@@ -94,7 +94,7 @@ plan_execution::PlanExecution::PlanExecution(
   executingTrajIdxSub_= node_handle_.subscribe<std_msgs::Int32>("/executing_traj_idx", 5, &PlanExecution::updateExecutingTrajIdx, this);
   
   // we want to be notified when new information is available
-  //planning_scene_monitor_->addUpdateCallback(boost::bind(&PlanExecution::planningSceneUpdatedCallback, this, _1));
+  planning_scene_monitor_->addUpdateCallback(boost::bind(&PlanExecution::planningSceneUpdatedCallback, this, _1));
 
   // start the dynamic-reconfigure server
   reconfigure_impl_ = new DynamicReconfigureImpl(this);
@@ -343,7 +343,7 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
       do
       {
         replan_attempts++;
-        ROS_INFO("Planning attempt %u of at most %u", replan_attempts, max_replan_attempts);
+        ROS_ERROR("Planning attempt %u of at most %u", replan_attempts, max_replan_attempts);
 
         if(opt.repair_plan_callback_)
         {
@@ -439,6 +439,130 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
           if (plan.error_code_.val != moveit_msgs::MoveItErrorCodes::MOTION_PLAN_INVALIDATED_BY_ENVIRONMENT_CHANGE)
             break;
         }
+        else if(max_replan_attempts>0)
+        {
+          ROS_ERROR("Try to replan from scratch!");
+          if (opt.before_plan_callback_)
+            opt.before_plan_callback_();
+
+          new_scene_update_ = false;  // we clear any scene updates to be evaluated because we are about to compute a new
+                                      // plan, which should consider most recent updates already
+
+          // if we never had a solved plan, or there is no specified way of fixing plans, just call the planner; otherwise,
+          // try to repair the plan we previously had;
+          bool solved =
+              (!previously_solved || !opt.repair_plan_callback_) ?
+                  opt.plan_callback_(plan) :
+                  opt.repair_plan_callback_(plan, trajectory_execution_manager_->getCurrentExpectedTrajectoryIndex());
+
+          if (preempt_requested_)
+            break;
+          plan.plan_components_.back().trajectory_->getRobotTrajectoryMsg(msg);
+          int length = msg.joint_trajectory.points.size();
+
+          if(replan_attempts>1)
+            {
+                ee_plan_markers.clear();
+                for(int i=0;i<ee_replan_markers.size();i++)
+                {
+                  visualization_msgs::Marker marker = ee_replan_markers[i];
+                  marker.action = visualization_msgs::Marker::ADD;
+                  marker.color.a = 1.0;
+                  marker.color.r = 0.0;
+                  marker.color.g = 1.0;
+                  marker.color.b = 0.0;
+                  marker.ns = "ee_planned_marker";
+                  eePlanPub_.publish(marker); 
+                  ee_plan_markers.push_back(marker); 
+                  sleep(0.3);
+
+                  marker.action = visualization_msgs::Marker::DELETE;
+                  marker.ns = "ee_replanned_marker";
+                  marker.color.a = 0.0; 
+                  eePlanPub_.publish(marker);  
+                  sleep(0.3);
+                }
+                ee_replan_markers.clear();
+                ROS_ERROR("finished changing colors!");
+            }
+
+            for(int i=0; i< length;i++)
+            {
+              moveit::core::jointTrajPointToRobotState(msg.joint_trajectory,i,state);
+              moveit::core::robotStateToRobotStateMsg(state,fk_req.robot_state);
+             
+              fk_req.header.frame_id = "world";
+              fk_req.header.stamp = ros::Time::now(); 
+
+              fk_req.fk_link_names.push_back("jaw");
+
+              service_client.call(fk_req,fk_res);
+              bool result = fk_res.error_code.val==fk_res.error_code.SUCCESS?1:0;
+              if(result)
+              {
+                visualization_msgs::Marker marker;
+                marker.header.frame_id = "world";
+                marker.header.stamp = ros::Time::now();
+                marker.ns = "ee_replanned_marker";
+                marker.type = visualization_msgs::Marker::ARROW;
+                marker.action = visualization_msgs::Marker::ADD;
+                marker.pose = fk_res.pose_stamped[0].pose;
+                
+                marker.scale.x = 0.1;
+                marker.scale.y = 0.01;
+                marker.scale.z = 0.01;
+                marker.color.a = 1.0;
+                marker.color.r = 1.0;
+                marker.color.g = 0.0;
+                marker.color.b = 0.0;
+                marker.id = ee_replan_markers.size();
+                ee_replan_markers.push_back(marker);
+                eePlanPub_.publish(marker);
+              }
+            }
+
+          // if planning fails in a manner that is not recoverable, we exit the loop,
+          // otherwise, we attempt to continue, if replanning attempts are left
+          if (plan.error_code_.val == moveit_msgs::MoveItErrorCodes::PLANNING_FAILED ||
+              plan.error_code_.val == moveit_msgs::MoveItErrorCodes::INVALID_MOTION_PLAN ||
+              plan.error_code_.val == moveit_msgs::MoveItErrorCodes::UNABLE_TO_AQUIRE_SENSOR_DATA)
+          {
+            if (plan.error_code_.val == moveit_msgs::MoveItErrorCodes::UNABLE_TO_AQUIRE_SENSOR_DATA &&
+                opt.replan_delay_ > 0.0)
+            {
+              ros::WallDuration d(opt.replan_delay_);
+              d.sleep();
+            }
+            continue;
+          }
+
+          // abort if no plan was found
+          if (solved)
+            previously_solved = true;
+          else
+            break;
+
+          if (plan.error_code_.val == moveit_msgs::MoveItErrorCodes::SUCCESS)
+          {
+            if (opt.before_execution_callback_)
+              opt.before_execution_callback_();
+
+            if (preempt_requested_)
+              break;
+
+            // execute the trajectory, and monitor its executionm
+            plan.error_code_ = executeAndMonitor(plan, opt);
+          }
+
+          // if we are done, then we exit the loop
+          if (plan.error_code_.val == moveit_msgs::MoveItErrorCodes::SUCCESS)
+            break;
+
+          // if execution failed in a manner that we do not consider recoverable, we exit the loop (with failure)
+          if (plan.error_code_.val != moveit_msgs::MoveItErrorCodes::MOTION_PLAN_INVALIDATED_BY_ENVIRONMENT_CHANGE)
+            break;
+        }
+        
         // othewrise, we wait (if needed)
         else if (opt.replan_delay_ > 0.0)
         {

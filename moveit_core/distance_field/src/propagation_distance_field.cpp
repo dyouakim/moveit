@@ -169,7 +169,7 @@ void PropagationDistanceField::updatePointsInField(const EigenSTL::vector_Vector
     // logInform("Adding obstacle voxel %d %d %d", (*it).x(), (*it).y(), (*it).z());
   }
 
-
+  logWarn("In updatePointsInField!!!!!!!!!!");
   removeObstacleVoxels(old_not_new);
   addNewObstacleVoxels(new_not_in_current);
 
@@ -193,15 +193,17 @@ void PropagationDistanceField::markCellExpansionStep (double x, double y, double
     {
       voxel->counter_ = expansion_step;
       voxel_grid_->setCell(gx,gy,gz,*voxel);
-      //logWarn("marking cell %zu,%zu,%zu with step %zu",gx,gy,gz,voxel_grid_->getCell(gx,gy,gz).counter_);
+      logInform("marking cell %zu,%zu,%zu and coords %f,%f,%f with step %zu ",gx,gy,gz,x,y,z,voxel_grid_->getCell(gx,gy,gz).counter_);
     }
+    /*else
+      logInform("Cell %zu,%zu,%zu already marked with step %zu and current is %zu",gx,gy,gz,voxel_grid_->getCell(gx,gy,gz).counter_, expansion_step);*/
   }
   
 }
 
 void PropagationDistanceField::resetCellsMarking (int restore_step)
 {
-  logError("start rest marking !!!!!");
+  logError("start rest marking with removed & added sizes %zu,%zu",addedCells_.size(),removedCells_.size());
   for (int x = 0; x < getXNumCells(); x++)
     for (int y = 0; y < getYNumCells(); y++)
       for (int z = 0; z < getZNumCells(); z++)
@@ -222,7 +224,7 @@ void PropagationDistanceField::resetCellsMarking (int restore_step)
     if(it->second > restore_step)
       removedCells_.erase(it);
   }
-  logError("end rest marking !!!!!");
+  logError("end rest marking up to step %zu with removed & added sizes %zu,%zu",restore_step,addedCells_.size(),removedCells_.size());
 }
 
 void PropagationDistanceField::addPointsToField(const EigenSTL::vector_Vector3d& points)
@@ -281,6 +283,7 @@ void PropagationDistanceField::addNewObstacleVoxels(const std::vector<Eigen::Vec
     negative_bucket_queue_[0].reserve(voxel_points.size());
   }
 
+  //logWarn("Total number of voxels here %zu",voxel_points.size());
   for (unsigned int i = 0; i < voxel_points.size(); i++)
   {
     PropDistanceFieldVoxel* voxel = voxel_grid_->getCellPtr(voxel_points[i].x(), voxel_points[i].y(), voxel_points[i].z());
@@ -294,19 +297,11 @@ void PropagationDistanceField::addNewObstacleVoxels(const std::vector<Eigen::Vec
     cell.push_back(loc[0]);
     cell.push_back(loc[1]);
     cell.push_back(loc[2]);
-    for(auto it=removedCells_.begin();it!=removedCells_.end();++it)
-    {
-      std::map<std::vector<int>,int>::iterator removedIt = removedCells_.find(cell);
-      if(removedIt!=removedCells_.end())
-      {
-        removedCells_.erase(removedIt);
-      }
-      
-    }
+    
     
     if(addedCells_.empty())
     {
-      //logWarn("adding to empty map %zu, %zu,%zu, %zu",cell[0],cell[1],cell[2],voxel->counter_);
+      logInform("adding to ADD empty map %zu, %zu,%zu, %zu",cell[0],cell[1],cell[2],voxel->counter_);
       addedCells_.insert(std::pair<std::vector<int>,int> (cell,voxel->counter_ ));
     }
     else
@@ -316,10 +311,20 @@ void PropagationDistanceField::addNewObstacleVoxels(const std::vector<Eigen::Vec
         std::map<std::vector<int>,int>::iterator addedIt = addedCells_.find(cell);
         if(addedIt==addedCells_.end())
         {
-          //logWarn("adding cause not found %zu, %zu,%zu, %zu",cell[0],cell[1],cell[2],voxel->counter_);
+          logInform("adding in ADD cause not found %zu, %zu,%zu, %zu",cell[0],cell[1],cell[2],voxel->counter_);
           addedCells_.insert(std::pair<std::vector<int>,int> (cell,voxel->counter_ ));
         }
       //}
+    }
+
+    for(auto it=removedCells_.begin();it!=removedCells_.end();++it)
+    {
+      std::map<std::vector<int>,int>::iterator removedIt = removedCells_.find(cell);
+      if(removedIt!=removedCells_.end())
+      {
+         logInform("removing from REMOVE %zu, %zu,%zu, %zu",cell[0],cell[1],cell[2],voxel->counter_);
+        removedCells_.erase(removedIt);
+      }  
     }
     
     if (propagate_negative_)
@@ -415,17 +420,11 @@ void PropagationDistanceField::removeObstacleVoxels(const std::vector<Eigen::Vec
     cell.push_back(voxel_points[i].x());
     cell.push_back(voxel_points[i].y());
     cell.push_back(voxel_points[i].z());
-    for(auto it=addedCells_.begin();it!=addedCells_.end();++it)
-    {
-      std::map<std::vector<int>,int>::iterator addedIt = addedCells_.find(cell);
-      if(addedIt!=addedCells_.end())
-      {
-        addedCells_.erase(addedIt);
-      } 
-    }
+    
     
     if(removedCells_.empty())
     {
+      logInform("adding to REMOVE empty map %zu, %zu,%zu, %zu",cell[0],cell[1],cell[2],voxel->counter_);
       removedCells_.insert(std::pair<std::vector<int>,int> (cell,voxel->counter_ ));
     }
     else
@@ -435,10 +434,21 @@ void PropagationDistanceField::removeObstacleVoxels(const std::vector<Eigen::Vec
         std::map<std::vector<int>,int>::iterator removedIt = removedCells_.find(cell);
         if(removedIt==removedCells_.end())
         {
+          logInform("adding in REMOVE cause not found %zu, %zu,%zu, %zu",cell[0],cell[1],cell[2],voxel->counter_);
           removedCells_.insert(std::pair<std::vector<int>,int> (cell,voxel->counter_ ));
         }    
       //}
     }
+
+    for(auto it=addedCells_.begin();it!=addedCells_.end();++it)
+    {
+      std::map<std::vector<int>,int>::iterator addedIt = addedCells_.find(cell);
+      if(addedIt!=addedCells_.end())
+      {
+        addedCells_.erase(addedIt);
+      } 
+    }
+
     voxel->distance_square_ = max_distance_sq_;
     voxel->closest_point_ = voxel_points[i];
     voxel->update_direction_ = initial_update_direction;  // not needed?

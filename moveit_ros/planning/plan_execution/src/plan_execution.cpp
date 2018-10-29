@@ -215,6 +215,8 @@ void plan_execution::PlanExecution::planAndExecute(ExecutableMotionPlan &plan,
 
 void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &plan, const Options &opt)
 {
+
+
   // perform initial configuration steps & various checks
   preempt_requested_ = false;
 
@@ -243,6 +245,10 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
             opt.repair_plan_callback_(plan, trajectory_execution_manager_->getCurrentExpectedTrajectoryIndex());
     */bool solved = opt.plan_callback_(plan);
     
+
+
+  ;
+
     if (preempt_requested_)
       return;
 
@@ -270,7 +276,7 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
     robot_state::RobotState state = scene_nonconst->getCurrentStateNonConst();
     
     moveit_msgs::RobotTrajectory msg;
-
+    bool test = false;
     // abort if no plan was found
     if (solved)
     {
@@ -278,7 +284,13 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
       invalidWayPointIdx_ = -1;
       // revert the trajectory for backward search
       if(opt.repair_plan_callback_)
-        plan.plan_components_.back().trajectory_->reverse();//setRobotTrajectoryMsg(reverted_msg);
+      {
+        for (std::size_t i = 0; i < plan.plan_components_.size(); ++i)
+        {
+          //ROS_ERROR_STREAM("in plan && execute!!! "<<plan.plan_components_[i].description_);
+          plan.plan_components_[i].trajectory_->reverse();
+        }
+      }
       plan.plan_components_.back().trajectory_->getRobotTrajectoryMsg(msg);
       int length = msg.joint_trajectory.points.size();
       
@@ -343,7 +355,7 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
       do
       {
         replan_attempts++;
-        ROS_ERROR("Planning attempt %u of at most %u", replan_attempts, max_replan_attempts);
+        ROS_ERROR_STREAM("Planning attempt "<< replan_attempts<<" of at most "<< max_replan_attempts);
 
         if(opt.repair_plan_callback_)
         {
@@ -359,8 +371,14 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
               break;
             // execute the trajectory, and monitor its execution
             ROS_ERROR("Here before reversing!");
-            plan.plan_components_.back().trajectory_->reverse();
-            plan.plan_components_.back().trajectory_->getRobotTrajectoryMsg(msg);
+            for (std::size_t i = 0; i < plan.plan_components_.size(); ++i)
+            {
+              //if(plan.plan_components_[i].description_=="plan")
+              {
+                plan.plan_components_[i].trajectory_->reverse();
+                plan.plan_components_[i].trajectory_->getRobotTrajectoryMsg(msg);
+              }
+            } 
             int length = msg.joint_trajectory.points.size();
             ROS_ERROR("Here after reversing!");
             if(replan_attempts>1)
@@ -441,7 +459,7 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
         }
         else if(max_replan_attempts>0)
         {
-          ROS_ERROR("Try to replan from scratch!");
+          ROS_ERROR_STREAM("Try to replan from scratch!");
           if (opt.before_plan_callback_)
             opt.before_plan_callback_();
 
@@ -682,9 +700,9 @@ void plan_execution::PlanExecution::computeFirstValidPoint(const ExecutableMotio
     {
       collision_detection::CollisionResult res;
       if (acm)
-        plan.planning_scene_->checkCollisionUnpadded(req, res, t.getWayPoint(i), *acm);
+        plan.planning_scene_->checkCollision(req, res, t.getWayPoint(i), *acm);
       else
-        plan.planning_scene_->checkCollisionUnpadded(req, res, t.getWayPoint(i));
+        plan.planning_scene_->checkCollision(req, res, t.getWayPoint(i));
 
       bool invalid = res.collision || !plan.planning_scene_->isStateFeasible(t.getWayPoint(i), false);
       if(invalid)
@@ -822,7 +840,7 @@ moveit_msgs::MoveItErrorCodes plan_execution::PlanExecution::executeAndMonitor( 
   }
   else if (path_became_invalid_)
   {
-    ROS_WARN_STREAM("Stopping execution because the path to execute became invalid (probably the environment changed). The invalidated index is "<<invalidWayPointIdx_);
+    ROS_ERROR_STREAM("Stopping execution because the path to execute became invalid (probably the environment changed). The invalidated index is "<<invalidWayPointIdx_);
     trajectory_execution_manager_->stopExecution();
   }
   else if (!execution_complete_)
@@ -837,7 +855,10 @@ moveit_msgs::MoveItErrorCodes plan_execution::PlanExecution::executeAndMonitor( 
 
   // decide return value
   if (path_became_invalid_)
+  {
+    ROS_ERROR_STREAM("Env changed!");
     result.val = moveit_msgs::MoveItErrorCodes::MOTION_PLAN_INVALIDATED_BY_ENVIRONMENT_CHANGE;
+  }
   else
   {
     if (preempt_requested_)

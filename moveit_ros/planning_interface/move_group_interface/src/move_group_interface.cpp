@@ -1138,6 +1138,10 @@ public:
     goal.support_surface_name = support_surface_;
     goal.planner_id = planner_id_;
     goal.workspace_parameters = workspace_parameters_;
+    goal.request_id = request_num_;
+    goal.num_planning_attempts = num_planning_attempts_;
+    goal.repair_index = -1;
+    goal.request_type = motion_plan_reuqest_type_;
     request_num_++;
     if (!support_surface_.empty())
       goal.allow_gripper_support_collision = true;

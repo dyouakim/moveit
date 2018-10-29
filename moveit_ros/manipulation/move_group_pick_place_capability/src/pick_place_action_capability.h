@@ -85,6 +85,8 @@ private:
 
   void fillGrasps(moveit_msgs::PickupGoal& goal);
 
+  bool repairPlan(const moveit_msgs::PickupGoalConstPtr& goal,moveit_msgs::PickupResult* action_res, plan_execution::ExecutableMotionPlan &plan, const std::pair<int, int>& invalidPointIdx);
+
   pick_place::PickPlacePtr pick_place_;
 
   std::unique_ptr<actionlib::SimpleActionServer<moveit_msgs::PickupAction> > pickup_action_server_;

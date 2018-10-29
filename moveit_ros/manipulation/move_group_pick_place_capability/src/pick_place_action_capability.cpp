@@ -259,7 +259,7 @@ void move_group::MoveGroupPickPlaceAction::executePickupCallback_PlanAndExecute(
   opt.replan_attempts_ = goal->planning_options.replan_attempts;
   opt.replan_delay_ = goal->planning_options.replan_delay;
   opt.before_execution_callback_ = boost::bind(&MoveGroupPickPlaceAction::startPickupExecutionCallback, this);
-
+  opt.replan_attempts_ = goal->num_planning_attempts;
   opt.plan_callback_ =
       boost::bind(&MoveGroupPickPlaceAction::planUsingPickPlace_Pickup, this, boost::cref(*goal), &action_res, _1);
   if (goal->planning_options.look_around && context_->plan_with_sensing_)
@@ -271,6 +271,11 @@ void move_group::MoveGroupPickPlaceAction::executePickupCallback_PlanAndExecute(
         boost::bind(&MoveGroupPickPlaceAction::startPickupLookCallback, this));
   }
 
+  if(goal->planning_options.replan)
+  {
+    opt.repair_plan_callback_ = boost::bind(&MoveGroupPickPlaceAction::repairPlan, this, boost::cref(goal),&action_res, _1, _2);
+  }
+
   plan_execution::ExecutableMotionPlan plan;
   context_->plan_execution_->planAndExecute(plan, goal->planning_options.planning_scene_diff, opt);
 
@@ -279,6 +284,38 @@ void move_group::MoveGroupPickPlaceAction::executePickupCallback_PlanAndExecute(
   for (std::size_t i = 0; i < plan.plan_components_.size(); ++i)
     action_res.trajectory_descriptions[i] = plan.plan_components_[i].description_;
   action_res.error_code = plan.error_code_;
+}
+
+bool move_group::MoveGroupPickPlaceAction::repairPlan(const moveit_msgs::PickupGoalConstPtr& goal, moveit_msgs::PickupResult* action_res, plan_execution::ExecutableMotionPlan &plan, const std::pair<int, int>& invalidPointIdx)
+{
+  ROS_INFO_STREAM("INSIDE PICK REPAIR!!!!!"<<std::get<0>(invalidPointIdx)<<","<<std::get<1>(invalidPointIdx));
+      
+  plan_execution::PlanExecution::Options opt;
+  opt.replan_ = goal->planning_options.replan;
+  opt.replan_attempts_ = goal->planning_options.replan_attempts;
+  opt.replan_delay_ = goal->planning_options.replan_delay;
+  opt.before_execution_callback_ = boost::bind(&MoveGroupPickPlaceAction::startPickupExecutionCallback, this);
+  opt.replan_attempts_ = goal->num_planning_attempts;
+  opt.plan_callback_ =
+      boost::bind(&MoveGroupPickPlaceAction::planUsingPickPlace_Pickup, this, boost::cref(*goal), action_res, _1);
+  
+   if(goal->planning_options.replan)
+  {
+    opt.repair_plan_callback_ = boost::bind(&MoveGroupPickPlaceAction::repairPlan, this, boost::cref(goal),action_res, _1, _2);
+  }
+
+  //plan_execution::ExecutableMotionPlan plan;
+  bool solved = true;
+  context_->plan_execution_->planAndExecute(plan, goal->planning_options.planning_scene_diff, opt);
+  
+
+  convertToMsg(plan.plan_components_, action_res->trajectory_start, action_res->trajectory_stages);
+  action_res->trajectory_descriptions.resize(plan.plan_components_.size());
+  for (std::size_t i = 0; i < plan.plan_components_.size(); ++i)
+    action_res->trajectory_descriptions[i] = plan.plan_components_[i].description_;
+  action_res->error_code = plan.error_code_;
+
+  return action_res->error_code.val;
 }
 
 void move_group::MoveGroupPickPlaceAction::executePlaceCallback_PlanAndExecute(

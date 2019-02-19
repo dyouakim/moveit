@@ -129,7 +129,7 @@ void collision_detection::CollisionWorldFCL::checkRobotCollisionHelper(const Col
   cd.enableGroup(robot.getRobotModel());
   for (std::size_t i = 0; !cd.done_ && i < fcl_obj.collision_objects_.size(); ++i)
     manager_->collide(fcl_obj.collision_objects_[i].get(), &cd, &collisionCallback);
-
+  
   if (req.distance)
     res.distance = distanceRobotHelper(robot, state, acm, req.verbose);
 }
@@ -167,6 +167,11 @@ void collision_detection::CollisionWorldFCL::constructFCLObject(const World::Obj
     FCLGeometryConstPtr g = createCollisionGeometry(obj->shapes_[i], obj);
     if (g)
     {
+       /*if(g->collision_geometry_->getObjectType()== fcl::OBJECT_TYPE::OT_OCTREE )
+      ROS_ERROR_STREAM("from FCL "<<((fcl::OcTree*)g->collision_geometry_.get())->getOccupancyThres()
+        <<","<<g->collision_geometry_->getNodeType()<<","<<g->collision_geometry_data_->shape_index
+        );*/
+
       fcl::CollisionObject* co = new fcl::CollisionObject(g->collision_geometry_, transform2fcl(obj->shape_poses_[i]));
       fcl_obj.collision_objects_.push_back(FCLCollisionObjectPtr(co));
       fcl_obj.collision_geometry_.push_back(g);
@@ -262,14 +267,22 @@ double collision_detection::CollisionWorldFCL::distanceRobotHelper(const Collisi
   robot_fcl.constructFCLObject(state, fcl_obj);
 
   CollisionRequest req;
-  req.verbose = verbose;
+  req.verbose = true;//verbose;
   CollisionResult res;
   CollisionData cd(&req, &res, acm);
   cd.enableGroup(robot.getRobotModel());
-
+  double start = ros::Time::now().toSec();
   for (std::size_t i = 0; !cd.done_ && i < fcl_obj.collision_objects_.size(); ++i)
+  {
+    if (i>=1 && i<=22)
+      continue;
+    if(i==25)
+      continue;
+    
     manager_->distance(fcl_obj.collision_objects_[i].get(), &cd, &distanceCallback);
-
+    //ROS_INFO_STREAM("Dist to obst for link "<<i<<" is "<<res.distance);
+  }
+  ROS_INFO_STREAM("Total Dist computation duration is "<<ros::Time::now().toSec()-start);
   return res.distance;
 }
 

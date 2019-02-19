@@ -136,7 +136,6 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
   }*/
 
 
-
   plan_execution::PlanExecution::Options opt;
 
   const moveit_msgs::MotionPlanRequest &motion_plan_request =
@@ -155,10 +154,10 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
 
   opt.plan_callback_ = boost::bind(&MoveGroupMoveAction::planUsingPlanningPipeline, this, boost::cref(motion_plan_request), _1);
   
-  /*if(goal->planning_options.replan)
+  if(goal->planning_options.replan && goal->request.planner_id.find("tra")!=std::string::npos)
   {
     opt.repair_plan_callback_ = boost::bind(&MoveGroupMoveAction::repairPlan, this, boost::cref(motion_plan_request), _1, _2);
-  }*/
+  }
 
   if (goal->planning_options.look_around && context_->plan_with_sensing_)
   {
@@ -180,8 +179,7 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
   {
     trials++;
     ROS_ERROR("Controller failed, goal aborted. Compute an Escape Point!");
-    ROS_ERROR_STREAM("At the e#beginning with the result  "<<action_res.error_code.val);
-
+    
     std::unique_ptr<sbpl::motion::BFS_3D> base_bfs;
     planning_scene::PlanningScene* scene_nonconst = const_cast <planning_scene::PlanningScene*> ((context_->planning_scene_monitor_.get())->getPlanningScene().get());
       

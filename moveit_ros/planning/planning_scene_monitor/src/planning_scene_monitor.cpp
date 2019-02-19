@@ -960,11 +960,11 @@ void planning_scene_monitor::PlanningSceneMonitor::currentWorldObjectUpdateCallb
   if((obj->id_ != planning_scene::PlanningScene::OCTOMAP_NS) && (action & collision_detection::World::CREATE) 
     && obj->shapes_[0]->type == shapes::ShapeType::BOX)
   {
-    /*ROS_ERROR_STREAM("Here updating octomap! for object "<<obj->id_<<" and psoe "
+    ROS_INFO_STREAM("Here updating octomap! for object "<<obj->id_<<" and psoe "
       <<obj->shape_poses_[0].translation().x()<<","<<obj->shape_poses_[0].translation().y()
-      <<","<<obj->shape_poses_[0].translation().z());*/
+      <<","<<obj->shape_poses_[0].translation().z());
     octomap_monitor_->getOcTreePtr()->lockWrite();
-    double res = 0.01;//octomap_monitor_->getOcTreePtr()->getResolution();
+    double res = octomap_monitor_->getOcTreePtr()->getResolution()/4;
     const shapes::Box* box = dynamic_cast< const shapes::Box*>(obj->shapes_[0].get());
     int numCubesX = std::ceil(box->size[0]/res);
     int numCubesY = std::ceil(box->size[1]/res);

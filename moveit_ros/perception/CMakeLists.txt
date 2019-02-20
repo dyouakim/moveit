@@ -12,6 +12,10 @@ find_package(Boost REQUIRED thread signals)
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(GLUT REQUIRED)
+find_package( PCL 1.7 REQUIRED )
+
+find_package(dynamicEDT3D REQUIRED)
+
 if (OPENGL_FOUND)
   set(gl_LIBS ${gl_LIBS} ${OPENGL_LIBRARIES})
 endif(OPENGL_FOUND)
@@ -32,13 +36,14 @@ find_package(catkin REQUIRED COMPONENTS
   object_recognition_msgs
   sensor_msgs
   moveit_msgs
+smpl
 )
 
 find_package(Eigen3 REQUIRED)
 
 # Eigen 3.2 (Wily) only provides EIGEN3_INCLUDE_DIR, not EIGEN3_INCLUDE_DIRS
 if(NOT EIGEN3_INCLUDE_DIRS)
-  set(EIGEN3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
+  set(EIGEN3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR} )
 endif()
 
 find_package(OpenMP)
@@ -54,7 +59,6 @@ catkin_package(
     occupancy_map_monitor/include
     pointcloud_octomap_updater/include
     semantic_world/include
-    ${OCTOMAP_INCLUDE_DIRS}
   LIBRARIES
     moveit_lazy_free_space_updater
     moveit_point_containment_filter
@@ -66,6 +70,7 @@ catkin_package(
     moveit_core
     image_transport
     moveit_msgs
+   smpl
   DEPENDS
     EIGEN3
 )
@@ -78,8 +83,9 @@ include_directories(mesh_filter/include
                     pointcloud_octomap_updater/include
                     semantic_world/include
                     ${Boost_INCLUDE_DIRS}
-                    ${catkin_INCLUDE_DIRS}
-                    )
+                    ${catkin_INCLUDE_DIRS}	    
+                    ${DYNAMICEDT3D_INCLUDE_DIRS}
+		   ${PCL_INCLUDE_DIRS})
 include_directories(SYSTEM
                     ${OpenCV_INCLUDE_DIRS}
                     ${EIGEN3_INCLUDE_DIRS}
@@ -91,6 +97,10 @@ include_directories(SYSTEM
 link_directories(${Boost_LIBRARY_DIRS})
 link_directories(${catkin_LIBRARY_DIRS})
 link_directories(${X11_LIBRARY_DIR})
+link_directories(${DYNAMICEDT3D_LIBRARY_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+
+add_definitions(${PCL_DEFINITIONS})
 
 add_subdirectory(lazy_free_space_updater)
 add_subdirectory(point_containment_filter)

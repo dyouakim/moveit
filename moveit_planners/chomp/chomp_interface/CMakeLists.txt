@@ -10,7 +10,8 @@ find_package(catkin REQUIRED COMPONENTS
   pluginlib
   chomp_motion_planner
   moveit_experimental
-smpl)
+smpl
+)
 
 find_package(Eigen3 REQUIRED)
 

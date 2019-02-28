@@ -44,6 +44,8 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <moveit/occupancy_map_monitor/occupancy_map_updater.h>
 #include <moveit/point_containment_filter/shape_mask.h>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 #include <memory>
 

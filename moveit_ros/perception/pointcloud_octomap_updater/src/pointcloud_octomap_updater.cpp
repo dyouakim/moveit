@@ -42,6 +42,7 @@
 #include <XmlRpcException.h>
 
 #include <memory>
+#include <octomap_msgs/conversions.h>
 
 namespace occupancy_map_monitor
 {
@@ -93,6 +94,7 @@ bool PointCloudOctomapUpdater::initialize()
   shape_mask_->setTransformCallback(boost::bind(&PointCloudOctomapUpdater::getShapeTransform, this, _1, _2));
   if (!filtered_cloud_topic_.empty())
     filtered_cloud_publisher_ = private_nh_.advertise<sensor_msgs::PointCloud2>(filtered_cloud_topic_, 10, false);
+  
   return true;
 }
 
@@ -165,14 +167,41 @@ void PointCloudOctomapUpdater::updateMask(const sensor_msgs::PointCloud2& cloud,
 
 void PointCloudOctomapUpdater::cloudMsgCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud_msg)
 {
-  ROS_DEBUG("Received a new point cloud message");
+  //ROS_ERROR_STREAM("Received a new point cloud message");
   ros::WallTime start = ros::WallTime::now();
+  
+  /* Removing noise from the received poitn clouds */
+
+  cv::Mat depth(cloud_msg->height,cloud_msg->width,CV_32FC1,cv::Scalar(0));
+  for (unsigned int row = 0; row < cloud_msg->height; row += point_subsample_)
+  {
+     unsigned int row_c = row * cloud_msg->width;
+      sensor_msgs::PointCloud2ConstIterator<float> pt_iter(*cloud_msg, "x");
+      pt_iter += row_c;
+
+      for (unsigned int col = 0; col < cloud_msg->width; col += point_subsample_, pt_iter += point_subsample_)
+      {
+        depth.at<float>(row,col) = pt_iter[2];
+      }
+  }
+
+  cv::Mat grad;
+  cv::Laplacian(depth, grad, CV_32FC1,3,1,0,cv::BORDER_DEFAULT);
+  cv::Mat binary;
+  cv::threshold(grad,binary,0.5,255,cv::THRESH_BINARY);
+  cv::Mat kernel= cv::getStructuringElement(cv::MORPH_RECT,cv::Size(3,3));
+  cv::morphologyEx(binary,binary,cv::MORPH_CLOSE,kernel);
+  //cv::imshow("Binary Img",binary);
+  //cv::waitKey(1);
+  
+  /*Noise removal Done*/
 
   if (monitor_->getMapFrame().empty())
     monitor_->setMapFrame(cloud_msg->header.frame_id);
 
+ // ROS_ERROR_STREAM("Map frame issss "<<monitor_->getMapFrame());
   /* get transform for cloud into map frame */
-  tf::StampedTransform map_H_sensor;
+  tf::StampedTransform map_auv, auv_base, base_sensor, map_H_sensor, tf_temp;
   if (monitor_->getMapFrame() == cloud_msg->header.frame_id)
     map_H_sensor.setIdentity();
   else
@@ -181,8 +210,35 @@ void PointCloudOctomapUpdater::cloudMsgCallback(const sensor_msgs::PointCloud2::
     {
       try
       {
-        tf_->lookupTransform(monitor_->getMapFrame(), cloud_msg->header.frame_id, cloud_msg->header.stamp,
+        //World to AUV
+       /* tf_->lookupTransform(monitor_->getMapFrame(), "girona500", ros::Time(0),
+                             map_auv);
+
+
+        //AUV to base --> static
+        tf::Quaternion auv_base_rot = tf::createQuaternionFromRPY(0.0, 0, 0); 
+        auv_base.setRotation(auv_base_rot);
+        tf::Vector3 auv_base_origin (0.74, 0.0, 0.372);
+        auv_base.setOrigin(auv_base_origin);
+
+
+        //base to sensor --> static
+        tf::Quaternion sensor_rot = tf::createQuaternionFromRPY(0.714503, 0.100298, 1.60923); 
+        base_sensor.setRotation(sensor_rot);
+        tf::Vector3 sensor_origin(0.0163722, -0.168313, -0.64);
+        base_sensor.setOrigin(sensor_origin);
+
+        /*tf_->lookupTransform("base", cloud_msg->header.frame_id, cloud_msg->header.stamp,
+                             base_sensor);*/
+
+      /*  tf_temp.setData(map_auv*auv_base);
+        map_H_sensor.setData(tf_temp*base_sensor);*/
+        map_H_sensor.child_frame_id_ = cloud_msg->header.frame_id;
+        map_H_sensor.frame_id_ = monitor_->getMapFrame();
+        map_H_sensor.stamp_ = cloud_msg->header.stamp;//ros::Time(0);
+       tf_->lookupTransform(monitor_->getMapFrame(), cloud_msg->header.frame_id, cloud_msg->header.stamp,
                              map_H_sensor);
+
       }
       catch (tf::TransformException& ex)
       {
@@ -194,8 +250,14 @@ void PointCloudOctomapUpdater::cloudMsgCallback(const sensor_msgs::PointCloud2::
       return;
   }
 
+
   /* compute sensor origin in map frame */
   const tf::Vector3& sensor_origin_tf = map_H_sensor.getOrigin();
+  //ROS_ERROR_STREAM("sensor origin to world "<<sensor_origin_tf.getX()<<","<<sensor_origin_tf.getY()<<","<<sensor_origin_tf.getZ());
+  double roll, pitch, yaw;
+  tf::Matrix3x3 m(map_H_sensor.getRotation());
+  m.getRPY(roll,pitch,yaw);
+  //ROS_ERROR_STREAM("sensor rotation to world "<<roll<<","<<pitch<<","<<yaw);
   octomap::point3d sensor_origin(sensor_origin_tf.getX(), sensor_origin_tf.getY(), sensor_origin_tf.getZ());
   Eigen::Vector3d sensor_origin_eigen(sensor_origin_tf.getX(), sensor_origin_tf.getY(), sensor_origin_tf.getZ());
 
@@ -233,12 +295,14 @@ void PointCloudOctomapUpdater::cloudMsgCallback(const sensor_msgs::PointCloud2::
     iter_filtered_z.reset(new sensor_msgs::PointCloud2Iterator<float>(*filtered_cloud, "z"));
   }
   size_t filtered_cloud_size = 0;
-
+  
+  
+  
   tree_->lockRead();
 
   try
   {
-    /* do ray tracing to find which cells this point cloud indicates should be free, and which it indicates
+     /* do ray tracing to find which cells this point cloud indicates should be free, and which it indicates
      * should be occupied */
     for (unsigned int row = 0; row < cloud_msg->height; row += point_subsample_)
     {
@@ -253,7 +317,7 @@ void PointCloudOctomapUpdater::cloudMsgCallback(const sensor_msgs::PointCloud2::
         //  continue;
 
         /* check for NaN */
-        if (!std::isnan(pt_iter[0]) && !std::isnan(pt_iter[1]) && !std::isnan(pt_iter[2]))
+        if (pt_iter[2] > 0.0f && binary.at<float>(row,col) == 0.0f)//!std::isnan(pt_iter[0]) && !std::isnan(pt_iter[1]) && !std::isnan(pt_iter[2]))
         {
           /* transform to map frame */
           tf::Vector3 point_tf = map_H_sensor * tf::Vector3(pt_iter[0], pt_iter[1], pt_iter[2]);
@@ -261,9 +325,13 @@ void PointCloudOctomapUpdater::cloudMsgCallback(const sensor_msgs::PointCloud2::
           /* occupied cell at ray endpoint if ray is shorter than max range and this point
              isn't on a part of the robot*/
           if (mask_[row_c + col] == point_containment_filter::ShapeMask::INSIDE)
+          {
             model_cells.insert(tree_->coordToKey(point_tf.getX(), point_tf.getY(), point_tf.getZ()));
+           }
           else if (mask_[row_c + col] == point_containment_filter::ShapeMask::CLIP)
+          {
             clip_cells.insert(tree_->coordToKey(point_tf.getX(), point_tf.getY(), point_tf.getZ()));
+            }
           else
           {
             occupied_cells.insert(tree_->coordToKey(point_tf.getX(), point_tf.getY(), point_tf.getZ()));
@@ -320,16 +388,23 @@ void PointCloudOctomapUpdater::cloudMsgCallback(const sensor_msgs::PointCloud2::
   {
     /* mark free cells only if not seen occupied in this cloud */
     for (octomap::KeySet::iterator it = free_cells.begin(), end = free_cells.end(); it != end; ++it)
+    {
       tree_->updateNode(*it, false);
+    }
 
     /* now mark all occupied cells */
     for (octomap::KeySet::iterator it = occupied_cells.begin(), end = occupied_cells.end(); it != end; ++it)
+    {
       tree_->updateNode(*it, true);
+      ros::Time start = ros::Time::now();
+    }
 
     // set the logodds to the minimum for the cells that are part of the model
     const float lg = tree_->getClampingThresMinLog() - tree_->getClampingThresMaxLog();
     for (octomap::KeySet::iterator it = model_cells.begin(), end = model_cells.end(); it != end; ++it)
+    {
       tree_->updateNode(*it, lg);
+    }
   }
   catch (...)
   {

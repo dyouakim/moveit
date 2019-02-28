@@ -60,6 +60,7 @@ public:
 protected:
   std::vector<std::string> joints_;
   const ros::Publisher& pub_;
+  ros::Publisher  statusPub_;
 };
 
 class LastPointController : public BaseFakeController

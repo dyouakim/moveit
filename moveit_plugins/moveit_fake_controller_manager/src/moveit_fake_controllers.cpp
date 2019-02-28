@@ -40,6 +40,8 @@
 #include <sensor_msgs/JointState.h>
 #include <boost/thread.hpp>
 #include <limits>
+#include <std_msgs/Int8.h>
+#include <ros/ros.h>
 
 namespace moveit_fake_controller_manager
 {
@@ -52,6 +54,8 @@ BaseFakeController::BaseFakeController(const std::string& name, const std::vecto
   std::copy(joints.begin(), joints.end(), std::ostream_iterator<std::string>(ss, " "));
   ss << "]";
   ROS_INFO_STREAM(ss.str());
+  ros::NodeHandle nh("~");
+  statusPub_ = nh.advertise<std_msgs::Int8>("execution_status", 10);
 }
 
 void BaseFakeController::getJoints(std::vector<std::string>& joints) const
@@ -76,7 +80,7 @@ LastPointController::~LastPointController()
 
 bool LastPointController::sendTrajectory(const moveit_msgs::RobotTrajectory& t)
 {
-  ROS_INFO("Fake execution of trajectory");
+ 
   if (t.joint_trajectory.points.empty())
     return true;
 
@@ -126,7 +130,18 @@ bool ThreadedController::sendTrajectory(const moveit_msgs::RobotTrajectory& t)
   cancelTrajectory();  // cancel any previous fake motion
   cancel_ = false;
   status_ = moveit_controller_manager::ExecutionStatus::PREEMPTED;
+  /*for(int i=0;i<t.joint_trajectory.points.size();i++)
+  {
+    ROS_ERROR_STREAM("Point ["<<i<<"]");
+    for(int j=0;j<8;j++)
+      ROS_ERROR_STREAM("Value of joint "<<t.joint_trajectory.joint_names[j]<<" is "<<t.joint_trajectory.points[i].positions[j]<<" time from start "<<t.joint_trajectory.points[i].time_from_start);
+  }*/
+
   thread_ = boost::thread(boost::bind(&ThreadedController::execTrajectory, this, t));
+  ros::Duration(0.5).sleep();
+  std_msgs::Int8 msg;
+  msg.data=1;
+  statusPub_.publish(msg);
   return true;
 }
 
@@ -163,6 +178,7 @@ ViaPointController::~ViaPointController()
 void ViaPointController::execTrajectory(const moveit_msgs::RobotTrajectory& t)
 {
   ROS_INFO("Fake execution of trajectory");
+  
   sensor_msgs::JointState js;
   js.header = t.joint_trajectory.header;
   js.name = t.joint_trajectory.joint_names;
@@ -210,7 +226,7 @@ void interpolate(sensor_msgs::JointState& js, const trajectory_msgs::JointTrajec
 {
   double duration = (next.time_from_start - prev.time_from_start).toSec();
   double alpha = 1.0;
-  if (duration > std::numeric_limits<double>::epsilon())
+ if (duration > std::numeric_limits<double>::epsilon())
     alpha = (elapsed - prev.time_from_start).toSec() / duration;
 
   js.position.resize(prev.positions.size());
@@ -229,13 +245,16 @@ void InterpolatingController::execTrajectory(const moveit_msgs::RobotTrajectory&
 
   sensor_msgs::JointState js;
   js.header = t.joint_trajectory.header;
-  js.name = t.joint_trajectory.joint_names;
+  js.name = t.joint_trajectory.joint_names; 
+  
 
   const std::vector<trajectory_msgs::JointTrajectoryPoint>& points = t.joint_trajectory.points;
   std::vector<trajectory_msgs::JointTrajectoryPoint>::const_iterator prev = points.begin(),  // previous via point
       next = points.begin() + 1,  // currently targetted via point
       end = points.end();
 
+  
+  int counter = 0;
   ros::Time startTime = ros::Time::now();
   while (!cancelled())
   {
@@ -255,6 +274,15 @@ void InterpolatingController::execTrajectory(const moveit_msgs::RobotTrajectory&
               duration > std::numeric_limits<double>::epsilon() ? (elapsed - prev->time_from_start).toSec() / duration :
                                                                   1.0);
     interpolate(js, *prev, *next, elapsed);
+    counter ++;
+    //ROS_ERROR_STREAM("here at "<<counter<<" of "<<t.joint_trajectory.points.size());
+    if(counter%10==0)
+    {
+      std_msgs::Int8 msg;
+      msg.data=1;
+
+      statusPub_.publish(msg);
+    }
     js.header.stamp = ros::Time::now();
     pub_.publish(js);
     rate_.sleep();
@@ -271,6 +299,7 @@ void InterpolatingController::execTrajectory(const moveit_msgs::RobotTrajectory&
   js.header.stamp = ros::Time::now();
   pub_.publish(js);
 
+  
   ROS_DEBUG("Fake execution of trajectory: done");
 }
 

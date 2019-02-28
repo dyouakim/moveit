@@ -147,7 +147,7 @@ std::string plan_execution::PlanExecution::getErrorCodeString(const moveit_msgs:
 
 void plan_execution::PlanExecution::planAndExecute(ExecutableMotionPlan &plan, const Options &opt)
 {
-  for(int i=0;i<ee_plan_markers.size();i++)
+  /*for(int i=0;i<ee_plan_markers.size();i++)
   {
     visualization_msgs::Marker marker = ee_plan_markers[i];
     marker.action = visualization_msgs::Marker::DELETE;
@@ -165,7 +165,7 @@ void plan_execution::PlanExecution::planAndExecute(ExecutableMotionPlan &plan, c
     sleep(0.3);
 
   }
-  ROS_ERROR("Clearing planning markers!!!!!!!!!!!");
+  ROS_ERROR("Clearing planning markers!!!!!!!!!!!");*/
   ee_plan_markers.clear();
   ee_replan_markers.clear();
   plan.planning_scene_monitor_ = planning_scene_monitor_;
@@ -176,7 +176,7 @@ void plan_execution::PlanExecution::planAndExecute(ExecutableMotionPlan &plan, c
 void plan_execution::PlanExecution::planAndExecute(ExecutableMotionPlan &plan,
                                                    const moveit_msgs::PlanningScene &scene_diff, const Options &opt)
 {
-  for(int i=0;i<ee_plan_markers.size();i++)
+ /* for(int i=0;i<ee_plan_markers.size();i++)
   {
     visualization_msgs::Marker marker = ee_plan_markers[i];
     marker.action = visualization_msgs::Marker::DELETE;
@@ -194,7 +194,7 @@ void plan_execution::PlanExecution::planAndExecute(ExecutableMotionPlan &plan,
     sleep(0.3);
 
   }
-  ROS_ERROR("Clearing planning markers!!!!!!!!!!!");
+  ROS_ERROR("Clearing planning markers!!!!!!!!!!!");*/
   ee_plan_markers.clear();
   ee_replan_markers.clear();
   if (planning_scene::PlanningScene::isEmpty(scene_diff))
@@ -237,17 +237,11 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
     new_scene_update_ = false;  // we clear any scene updates to be evaluated because we are about to compute a new
                                 // plan, which should consider most recent updates already
 
-    // if we never had a solved plan, or there is no specified way of fixing plans, just call the planner; otherwise,
-    // try to repair the plan we previously had;
-    /*bool solved =
-        (!previously_solved || !opt.repair_plan_callback_) ?
-            opt.plan_callback_(plan) :
-            opt.repair_plan_callback_(plan, trajectory_execution_manager_->getCurrentExpectedTrajectoryIndex());
-    */bool solved = opt.plan_callback_(plan);
     
-
-
-  ;
+    //if the scene invalidated the plan, call re-planning again, the planning request id will decide if 
+    //to re-plan from scratch or use data from previous planning
+    bool solved = opt.plan_callback_(plan);
+    
 
     if (preempt_requested_)
       return;
@@ -282,12 +276,11 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
     {
       previously_solved = true;
       invalidWayPointIdx_ = -1;
-      // revert the trajectory for backward search
+      // revert the trajectory for backward search --> for now the repair option is used to distinguish the backward search
       if(opt.repair_plan_callback_)
       {
         for (std::size_t i = 0; i < plan.plan_components_.size(); ++i)
         {
-          //ROS_ERROR_STREAM("in plan && execute!!! "<<plan.plan_components_[i].description_);
           plan.plan_components_[i].trajectory_->reverse();
         }
       }
@@ -370,17 +363,16 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
             if (preempt_requested_)
               break;
             // execute the trajectory, and monitor its execution
-            ROS_ERROR("Here before reversing!");
             for (std::size_t i = 0; i < plan.plan_components_.size(); ++i)
             {
               //if(plan.plan_components_[i].description_=="plan")
               {
                 plan.plan_components_[i].trajectory_->reverse();
-                plan.plan_components_[i].trajectory_->getRobotTrajectoryMsg(msg);
               }
-            } 
+            }
+
+            plan.plan_components_.back().trajectory_->getRobotTrajectoryMsg(msg);
             int length = msg.joint_trajectory.points.size();
-            ROS_ERROR("Here after reversing!");
             if(replan_attempts>1)
             {
                 ee_plan_markers.clear();
@@ -442,7 +434,6 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
               }
             }
 
-            ROS_ERROR_STREAM("HERE BEFORE EXECUTION "<<plan.plan_components_.size());
             path_became_invalid_ = false; 
             invalidWayPointIdx_ = -1;
             firstValidPointIdx_ = -1;
@@ -475,6 +466,10 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
 
           if (preempt_requested_)
             break;
+          for (std::size_t i = 0; i < plan.plan_components_.size(); ++i)
+          {
+            plan.plan_components_[i].trajectory_->reverse();
+          }
           plan.plan_components_.back().trajectory_->getRobotTrajectoryMsg(msg);
           int length = msg.joint_trajectory.points.size();
 
@@ -551,7 +546,8 @@ void plan_execution::PlanExecution::planAndExecuteHelper(ExecutableMotionPlan &p
               ros::WallDuration d(opt.replan_delay_);
               d.sleep();
             }
-            continue;
+            //continue;
+            return;
           }
 
           // abort if no plan was found

@@ -45,7 +45,6 @@
 #include <shape_msgs/MeshTriangle.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <moveit/collision_detection/world.h>
-#include <smpl/occupancy_grid.h>
 
 namespace collision_detection
 {

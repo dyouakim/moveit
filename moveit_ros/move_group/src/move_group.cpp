@@ -181,16 +181,16 @@ int main(int argc, char** argv)
   
   workspace.header.frame_id = robot_model_loader.getModel()->getModelFrame();
   workspace.header.stamp = ros::Time::now();
-  workspace.min_corner.x = -10;
-  workspace.min_corner.y = -10;
+  workspace.min_corner.x = -35;
+  workspace.min_corner.y = -35;
   workspace.min_corner.z = 1.5;
-  workspace.max_corner.x = 10;
-  workspace.max_corner.y = 10;
-  workspace.max_corner.z = 15;
+  workspace.max_corner.x = 35;
+  workspace.max_corner.y = 35.0;
+  workspace.max_corner.z = 10.0;
 
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor(
     //new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION,tf));
-    new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION, true,workspace,0.2,0.5, tf));
+    new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION, true,workspace,0.15,0.5, tf));
 
   
   if (planning_scene_monitor->getPlanningScene())

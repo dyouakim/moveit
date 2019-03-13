@@ -3,14 +3,19 @@ project(moveit_core)
 
 add_compile_options(-std=c++11)
 
+# Warnings
+add_definitions(-Wall -Wextra
+  -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls -Wcast-qual
+  -Wno-unused-parameter -Wno-unused-function -Wno-maybe-uninitialized)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   message("${PROJECT_NAME}: You did not request a specific build type: Choosing 'Release' for maximum performance")
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
 find_package(Boost REQUIRED system filesystem date_time thread iostreams)
-
-find_package(console_bridge REQUIRED)
 
 find_package(Eigen3 REQUIRED)
 
@@ -19,8 +24,8 @@ if(NOT EIGEN3_INCLUDE_DIRS)
   set(EIGEN3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
 endif()
 
-#find_package(LIBFCL REQUIRED fcl)
 find_package(PkgConfig REQUIRED)
+
 pkg_check_modules(LIBFCL REQUIRED fcl)
 find_library(LIBFCL_LIBRARIES_FULL ${LIBFCL_LIBRARIES} ${LIBFCL_LIBRARY_DIRS})
 set(LIBFCL_LIBRARIES "${LIBFCL_LIBRARIES_FULL}")
@@ -42,12 +47,15 @@ COMPONENTS
   random_numbers
   roslib
   rostime
+  rosconsole
   sensor_msgs
   shape_msgs
   srdfdom
   std_msgs
   trajectory_msgs
+  urdf
   visualization_msgs
+  xmlrpcpp
 smpl
 )
 
@@ -69,6 +77,7 @@ set(THIS_PACKAGE_INCLUDE_DIRS
     constraint_samplers/include
     controller_manager/include
     distance_field/include
+    collision_distance_field/include
     dynamics_solver/include
     kinematics_base/include
     kinematics_metrics/include
@@ -84,6 +93,7 @@ set(THIS_PACKAGE_INCLUDE_DIRS
     profiler/include
     sensor_manager/include
     trajectory_processing/include
+    utils/include
 )
 
 catkin_package(
@@ -107,8 +117,10 @@ catkin_package(
     moveit_profiler
     moveit_trajectory_processing
     moveit_distance_field
+    moveit_collision_distance_field
     moveit_kinematics_metrics
     moveit_dynamics_solver
+    moveit_utils
     ${OCTOMAP_LIBRARIES}
   CATKIN_DEPENDS
     eigen_conversions
@@ -127,21 +139,32 @@ catkin_package(
   DEPENDS
     Boost
     EIGEN3
+    LIBFCL
     OCTOMAP
-    console_bridge
     urdfdom
     urdfdom_headers
     )
 
-include_directories(SYSTEM ${EIGEN3_INCLUDE_DIR}
-                           ${Boost_INCLUDE_DIR}
+
+# to run: catkin_make -DENABLE_COVERAGE_TESTING=ON package_name_coverage
+if(ENABLE_COVERAGE_TESTING)
+  find_package(code_coverage REQUIRED)   # catkin package ros-*-code-coverage
+  include(CodeCoverage)
+  APPEND_COVERAGE_COMPILER_FLAGS()
+  set(COVERAGE_EXCLUDES "*/test/*")
+  add_code_coverage(
+    NAME ${PROJECT_NAME}_coverage
+  )
+endif()
+
+include_directories(SYSTEM ${EIGEN3_INCLUDE_DIRS}
                            ${LIBFCL_INCLUDE_DIRS}
                            )
 
 include_directories(${THIS_PACKAGE_INCLUDE_DIRS}
                     ${VERSION_FILE_PATH}
+                    ${Boost_INCLUDE_DIRS}
                     ${catkin_INCLUDE_DIRS}
-                    ${console_bridge_INCLUDE_DIRS}
                     ${urdfdom_INCLUDE_DIRS}
                     ${urdfdom_headers_INCLUDE_DIRS}
                     ${OCTOMAP_INCLUDE_DIRS}
@@ -156,6 +179,10 @@ set(MOVEIT_VERSION "${MOVEIT_VERSION_MAJOR}.${MOVEIT_VERSION_MINOR}.${MOVEIT_VER
 message(STATUS " *** Building MoveIt! ${MOVEIT_VERSION} ***")
 configure_file("version/version.h.in" "${VERSION_FILE_PATH}/moveit/version.h")
 install(FILES "${VERSION_FILE_PATH}/moveit/version.h" DESTINATION ${CATKIN_GLOBAL_INCLUDE_DESTINATION}/moveit)
+
+if(CATKIN_ENABLE_TESTING)
+  find_package(moveit_resources REQUIRED)
+endif()
 
 add_subdirectory(version)
 add_subdirectory(macros)
@@ -179,5 +206,8 @@ add_subdirectory(planning_interface)
 add_subdirectory(planning_request_adapter)
 add_subdirectory(trajectory_processing)
 add_subdirectory(distance_field)
+add_subdirectory(collision_distance_field)
 add_subdirectory(kinematics_metrics)
 add_subdirectory(dynamics_solver)
+add_subdirectory(utils)
+

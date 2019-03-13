@@ -2,6 +2,24 @@
 Changelog for package moveit_ros_control_interface
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.9.15 (2018-10-29)
+-------------------
+
+0.9.14 (2018-10-24)
+-------------------
+
+0.9.13 (2018-10-24)
+-------------------
+
+0.9.12 (2018-05-29)
+-------------------
+
+0.9.11 (2017-12-25)
+-------------------
+
+0.9.10 (2017-12-09)
+-------------------
+
 0.9.9 (2017-08-06)
 ------------------
 * [improve] add backward compatibility patch for indigo (`#551 <https://github.com/ros-planning/moveit/issues/551>`_)
@@ -25,7 +43,7 @@ Changelog for package moveit_ros_control_interface
 * Contributors: Dave Coleman, Michael Goerner
 
 0.9.3 (2016-11-16)
------------
+------------------
 
 0.5.7 (2016-01-30)
 ------------------

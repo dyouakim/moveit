@@ -9,18 +9,21 @@ endif()
 
 find_package(Boost REQUIRED system filesystem date_time program_options signals thread chrono)
 find_package(catkin REQUIRED COMPONENTS
+  cmake_modules
+  chomp_motion_planner
   moveit_core
+  moveit_msgs
   moveit_ros_perception
   pluginlib
   actionlib
   roscpp
-  rosconsole
   dynamic_reconfigure
   message_filters
   srdfdom
   urdf
   tf
   tf_conversions
+  eigen_conversions
 )
 
 find_package(Eigen3 REQUIRED)
@@ -64,8 +67,10 @@ catkin_package(
   INCLUDE_DIRS
     ${THIS_PACKAGE_INCLUDE_DIRS}
   CATKIN_DEPENDS
+    chomp_motion_planner
     pluginlib
     moveit_core
+    moveit_msgs
     moveit_ros_perception
   DEPENDS
     EIGEN3

@@ -35,8 +35,9 @@
 /* Author: Sachin Chitta, David Lu!!, Ugo Cupcic */
 
 #include <moveit/kdl_kinematics_plugin/kdl_kinematics_plugin.h>
-#include <class_loader/class_loader.h>
-//#include <tf/transform_datatypes.h>
+
+#include <class_loader/class_loader.hpp>
+
 #include <tf_conversions/tf_kdl.h>
 #include <kdl_parser/kdl_parser.hpp>
 
@@ -131,7 +132,6 @@ bool KDLKinematicsPlugin::initialize(const std::string &robot_description, const
 {
   setValues(robot_description, group_name, base_frame, tip_frame, search_discretization);
 
-  ros::NodeHandle private_handle("~");
   rdf_loader::RDFLoader rdf_loader(robot_description_);
   const srdf::ModelSharedPtr &srdf = rdf_loader.getSRDF();
   const urdf::ModelInterfaceSharedPtr &urdf_model = rdf_loader.getURDF();
@@ -210,11 +210,10 @@ bool KDLKinematicsPlugin::initialize(const std::string &robot_description, const
   double epsilon;
   bool position_ik;
 
-  private_handle.param("max_solver_iterations", max_solver_iterations, 500);
-  private_handle.param("epsilon", epsilon, 1e-5);
-  private_handle.param(group_name + "/position_only_ik", position_ik, false);
-  ROS_DEBUG_NAMED("kdl", "Looking in private handle: %s for param name: %s", private_handle.getNamespace().c_str(),
-                  (group_name + "/position_only_ik").c_str());
+  lookupParam("max_solver_iterations", max_solver_iterations, 500);
+  lookupParam("epsilon", epsilon, 1e-5);
+  lookupParam("position_only_ik", position_ik, false);
+  ROS_DEBUG_NAMED("kdl", "Looking for param name: position_only_ik");
 
   if (position_ik)
     ROS_INFO_NAMED("kdl", "Using position only ik");
@@ -310,7 +309,8 @@ bool KDLKinematicsPlugin::setRedundantJoints(const std::vector<unsigned int> &re
       {
         ROS_ASSERT(joint_list[i].getType() == XmlRpc::XmlRpcValue::TypeString);
         redundant_joints.push_back(static_cast<std::string>(joint_list[i]));
-        ROS_INFO_NAMED("kdl","Designated joint: %s as redundant joint", redundant_joints.back().c_str());
+        ROS_INFO_NAMED("kdl","Designated joint: %s as redundant joint",
+    redundant_joints.back().c_str());
       }
     }
   */
@@ -609,7 +609,6 @@ bool KDLKinematicsPlugin::getPositionFK(const std::vector<std::string> &link_nam
                                         const std::vector<double> &joint_angles,
                                         std::vector<geometry_msgs::Pose> &poses) const
 {
-  ros::WallTime n1 = ros::WallTime::now();
   if (!active_)
   {
     ROS_ERROR_NAMED("kdl", "kinematics not active");

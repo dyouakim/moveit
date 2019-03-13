@@ -35,7 +35,7 @@
 /* Author: Francisco Suarez-Ruiz */
 
 #include <moveit/lma_kinematics_plugin/lma_kinematics_plugin.h>
-#include <class_loader/class_loader.h>
+#include <class_loader/class_loader.hpp>
 
 #include <tf_conversions/tf_kdl.h>
 #include <kdl_parser/kdl_parser.hpp>
@@ -130,7 +130,6 @@ bool LMAKinematicsPlugin::initialize(const std::string& robot_description, const
 {
   setValues(robot_description, group_name, base_frame, tip_frame, search_discretization);
 
-  ros::NodeHandle private_handle("~");
   rdf_loader::RDFLoader rdf_loader(robot_description_);
   const srdf::ModelSharedPtr& srdf = rdf_loader.getSRDF();
   const urdf::ModelInterfaceSharedPtr& urdf_model = rdf_loader.getURDF();
@@ -209,11 +208,10 @@ bool LMAKinematicsPlugin::initialize(const std::string& robot_description, const
   double epsilon;
   bool position_ik;
 
-  private_handle.param("max_solver_iterations", max_solver_iterations, 500);
-  private_handle.param("epsilon", epsilon, 1e-5);
-  private_handle.param(group_name + "/position_only_ik", position_ik, false);
-  ROS_DEBUG_NAMED("lma", "Looking in private handle: %s for param name: %s", private_handle.getNamespace().c_str(),
-                  (group_name + "/position_only_ik").c_str());
+  lookupParam("max_solver_iterations", max_solver_iterations, 500);
+  lookupParam("epsilon", epsilon, 1e-5);
+  lookupParam("position_only_ik", position_ik, false);
+  ROS_DEBUG_NAMED("lma", "Looking for param name: position_only_ik");
 
   if (position_ik)
     ROS_INFO_NAMED("lma", "Using position only ik");
@@ -222,7 +220,6 @@ bool LMAKinematicsPlugin::initialize(const std::string& robot_description, const
       kdl_chain_.getNrOfJoints() - joint_model_group->getMimicJointModels().size() - (position_ik ? 3 : 6);
 
   // Check for mimic joints
-  bool has_mimic_joints = joint_model_group->getMimicJointModels().size() > 0;
   std::vector<unsigned int> redundant_joints_map_index;
 
   std::vector<JointMimic> mimic_joints;
@@ -295,7 +292,7 @@ bool LMAKinematicsPlugin::setRedundantJoints(const std::vector<unsigned int>& re
     ROS_ERROR_NAMED("lma", "This group cannot have redundant joints");
     return false;
   }
-  if (redundant_joints.size() > num_possible_redundant_joints_)
+  if (int(redundant_joints.size()) > num_possible_redundant_joints_)
   {
     ROS_ERROR_NAMED("lma", "This group can only have %d redundant joints", num_possible_redundant_joints_);
     return false;
@@ -310,7 +307,8 @@ bool LMAKinematicsPlugin::setRedundantJoints(const std::vector<unsigned int>& re
       {
         ROS_ASSERT(joint_list[i].getType() == XmlRpc::XmlRpcValue::TypeString);
         redundant_joints.push_back(static_cast<std::string>(joint_list[i]));
-        ROS_INFO_NAMED("lma","Designated joint: %s as redundant joint", redundant_joints.back().c_str());
+        ROS_INFO_NAMED("lma","Designated joint: %s as redundant joint",
+    redundant_joints.back().c_str());
       }
     }
   */
@@ -570,7 +568,6 @@ bool LMAKinematicsPlugin::getPositionFK(const std::vector<std::string>& link_nam
                                         const std::vector<double>& joint_angles,
                                         std::vector<geometry_msgs::Pose>& poses) const
 {
-  ros::WallTime n1 = ros::WallTime::now();
   if (!active_)
   {
     ROS_ERROR_NAMED("lma", "kinematics not active");

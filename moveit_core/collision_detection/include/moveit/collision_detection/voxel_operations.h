@@ -29,8 +29,8 @@
 
 /// \author Andrew Dornbush
 
-#ifndef sbpl_collision_voxel_operations_h
-#define sbpl_collision_voxel_operations_h
+#ifndef smpl_collision_voxel_operations_h
+#define smpl_collision_voxel_operations_h
 
 // standard includes
 #include <vector>

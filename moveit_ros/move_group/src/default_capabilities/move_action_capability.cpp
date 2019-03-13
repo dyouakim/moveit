@@ -51,7 +51,8 @@
 #include <smpl/debug/marker.h>
 #include <smpl/debug/visualize.h>
 
-move_group::MoveGroupMoveAction::MoveGroupMoveAction() : MoveGroupCapability("MoveAction"), move_state_(IDLE)
+move_group::MoveGroupMoveAction::MoveGroupMoveAction()
+  : MoveGroupCapability("MoveAction"), move_state_(IDLE), preempt_requested_{ false }
 {
 }
 
@@ -96,6 +97,8 @@ void move_group::MoveGroupMoveAction::executeMoveCallback(const moveit_msgs::Mov
       move_action_server_->setAborted(action_res, response);
   }
   setMoveState(IDLE);
+
+  preempt_requested_ = false;
 }
 
 void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const moveit_msgs::MoveGroupGoalConstPtr &goal,
@@ -169,6 +172,13 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
 
 
   plan_execution::ExecutableMotionPlan plan;
+  if (preempt_requested_)
+  {
+    ROS_INFO("Preempt requested before the goal is planned and executed.");
+    action_res.error_code.val = moveit_msgs::MoveItErrorCodes::PREEMPTED;
+    return;
+  }
+
   context_->plan_execution_->planAndExecute(plan, planning_scene_diff, opt);
   convertToMsg(plan.plan_components_, action_res.trajectory_start, action_res.planned_trajectory);
   if (plan.executed_trajectory_)
@@ -217,7 +227,7 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
     ee_z = fk_res.pose_stamped[0].pose.position.z;
 
 
-    const int xc = grid_world->grid()->numCellsX();
+    /*const int xc = grid_world->grid()->numCellsX();
     const int yc = grid_world->grid()->numCellsY();
     const int zc = grid_world->grid()->numCellsZ();
     base_bfs.reset(new sbpl::motion::BFS_3D(xc, yc, zc));
@@ -250,7 +260,7 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
     for (int z = 0; z < zc; z++) {
         if (base_bfs->isWall(x, y, z)) {
             Eigen::Vector3d p;
-            grid_world->grid()->gridToWorld(x, y, z, p.x(), p.y(), p.z());
+            //grid_world->grid()->gridToWorld(x, y, z, p.x(), p.y(), p.z());
             centers.push_back(p);
         }
     }
@@ -258,14 +268,14 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
     }
 
    
-    sbpl::visual::Color color;
+    sbpl::motion::visual::Color color;
     color.r = 100.0f / 255.0f;
     color.g = 149.0f / 255.0f;
     color.b = 238.0f / 255.0f;
     color.a = 1.0f;
 
     
-    SV_SHOW_INFO_NAMED("bfs_walls_escape", sbpl::visual::MakeCubesMarker(
+    SV_SHOW_INFO_NAMED("bfs_walls_escape", sbpl::motion::visual::MakeCubesMarker(
             centers,
             grid_world->grid()->resolution(),
             color,
@@ -274,7 +284,7 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
 
     ROS_ERROR_STREAM("Here after showing heursitics!");
 
-
+*/
     double x,y,z;
     std::vector<double> costs;
     int min_idx  = -1;
@@ -337,8 +347,8 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
       ROS_ERROR_STREAM("after calling FK!");
 
       Eigen::Vector3i dp;
-      grid_world->grid()->worldToGrid(fk_res.pose_stamped[0].pose.position.x,fk_res.pose_stamped[0].pose.position.y,fk_res.pose_stamped[0].pose.position.z,
-                                      dp.x(), dp.y(), dp.z());
+      /*grid_world->grid()->worldToGrid(fk_res.pose_stamped[0].pose.position.x,fk_res.pose_stamped[0].pose.position.y,fk_res.pose_stamped[0].pose.position.z,
+                                      dp.x(), dp.y(), dp.z());*/
 
       ROS_ERROR_STREAM("Random config["<<i+correction<<"] is "<<x<<","<<y<<","<<z<<","<<robot_state.getVariablePosition(robot_state.getVariableNames()[3]));
       ROS_ERROR_STREAM("The equivalent EE pose "<<fk_res.pose_stamped[0].pose.position.x<<","<<fk_res.pose_stamped[0].pose.position.y<<","<<fk_res.pose_stamped[0].pose.position.z);
@@ -358,9 +368,9 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanAndExecute(const m
         computed_states.push_back(robot_state);
         
         ROS_ERROR_STREAM("Here before computing dist!");
-        double dist = ((double)(base_bfs->getDistance(dp.x(), dp.y(), dp.z())))*((double)grid_world->grid()->resolution());
-        costs.push_back(dist);
-        ROS_ERROR_STREAM("Dist is "<<dist<<" and before "<<base_bfs->getDistance(dp.x(), dp.y(), dp.z())<<" res "<<grid_world->grid()->resolution());
+       // double dist = ((double)(base_bfs->getDistance(dp.x(), dp.y(), dp.z())))*((double)grid_world->grid()->resolution());
+        //costs.push_back(dist);
+        //ROS_ERROR_STREAM("Dist is "<<dist<<" and before "<<base_bfs->getDistance(dp.x(), dp.y(), dp.z())<<" res "<<grid_world->grid()->resolution());
       }
 
       ROS_ERROR_STREAM(" The cost of the state is "<<costs[i+correction]);
@@ -452,8 +462,16 @@ void move_group::MoveGroupMoveAction::executeMoveCallback_PlanOnly(const moveit_
           static_cast<const planning_scene::PlanningSceneConstPtr &>(lscene) :
           lscene->diff(goal->planning_options.planning_scene_diff);
 
- planning_interface::MotionPlanResponse res;
- try
+  planning_interface::MotionPlanResponse res;
+
+  if (preempt_requested_)
+  {
+    ROS_INFO("Preempt requested before the goal is planned.");
+    action_res.error_code.val = moveit_msgs::MoveItErrorCodes::PREEMPTED;
+    return;
+  }
+
+  try
   {
     context_->planning_pipeline_->generatePlan(the_scene, goal->request, res);
   }
@@ -594,6 +612,7 @@ void move_group::MoveGroupMoveAction::startMoveLookCallback()
 
 void move_group::MoveGroupMoveAction::preemptMoveCallback()
 {
+  preempt_requested_ = true;
   context_->plan_execution_->stop();
 }
 
@@ -604,5 +623,5 @@ void move_group::MoveGroupMoveAction::setMoveState(MoveGroupState state)
   move_action_server_->publishFeedback(move_feedback_);
 }
 
-#include <class_loader/class_loader.h>
+#include <class_loader/class_loader.hpp>
 CLASS_LOADER_REGISTER_CLASS(move_group::MoveGroupMoveAction, move_group::MoveGroupCapability)

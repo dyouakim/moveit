@@ -74,6 +74,7 @@ private:
   moveit_msgs::MoveGroupFeedback move_feedback_;
 
   MoveGroupState move_state_;
+  bool preempt_requested_;
 };
 }
 

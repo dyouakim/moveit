@@ -44,7 +44,6 @@
 //#include <leatherman/utils.h>
 #include <moveit/collision_detection/world.h>
 #include <octomap_msgs/conversions.h>
-
 // project includes
 #include <moveit/collision_detection/voxel_operations.h>
 #include <ros/console.h>
@@ -61,6 +60,7 @@ GridWorld::GridWorld(sbpl::OccupancyGrid* grid) :
 
 GridWorld::GridWorld(GridWorld& world) :
     collision_detection::World::World(world)
+    //,m_grid(world.grid())
 {
     m_grid = new sbpl::OccupancyGrid(*world.grid());
     m_object_voxel_map = world.m_object_voxel_map;
@@ -74,6 +74,7 @@ GridWorld::GridWorld(const World& world, sbpl::OccupancyGrid* grid)
     m_object_map(),
     m_object_voxel_map(),
     m_padding(0.0)
+    //,m_grid(grid)
 {
     m_grid = new sbpl::OccupancyGrid(*grid);
 }
@@ -102,7 +103,7 @@ void collision_detection::GridWorld::addToObject(const std::string& id, const bo
     {
         ObjectConstPtr object = collision_detection::World::getObject(id);
         if(!insertObjectInGrid(object))
-            logError("failed to add the object into the grid!");
+            ROS_ERROR("failed to add the object into the grid!");
     }
 }
 
@@ -114,10 +115,10 @@ void collision_detection::GridWorld::addToObject(const std::string& id, const bo
     {
         ObjectConstPtr object = collision_detection::World::getObject(id);
         if(!insertObjectInGrid(object))
-            logError("failed to add the object into the grid!");
+            ROS_ERROR("failed to add the object into the grid!");
     }
     else
-        logError("Manipulation Object not added to grid");
+        ROS_ERROR("Manipulation Object not added to grid");
     
 }
 
@@ -172,7 +173,7 @@ bool GridWorld::insertObjectInGrid(const ObjectConstPtr& object)
     
     std::vector<std::vector<Eigen::Vector3d>> all_voxels;
     if (!VoxelizeObject(*object, res, origin, gmin, gmax, all_voxels)) {
-        logError("Failed to voxelize object '%s'", object->id_.c_str());
+        ROS_ERROR("Failed to voxelize object '%s'", object->id_.c_str());
         return false;
     }
     auto vit = m_object_voxel_map.insert(
@@ -180,8 +181,8 @@ bool GridWorld::insertObjectInGrid(const ObjectConstPtr& object)
     vit.first->second = std::move(all_voxels);
     //assert(vit.second);
     m_object_map.insert(std::make_pair(object->id_, object));
-    for (const auto& voxel_list : vit.first->second) {
-        logDebug("Adding %zu voxels from collision object '%s' to the distance transform",
+    for (const auto& voxel_list : vit.first->second) {                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+        ROS_DEBUG("Adding %zu voxels from collision object '%s' to the distance transform",
                 voxel_list.size(), object->id_.c_str());
         m_grid->addPointsToField(voxel_list);
     }
@@ -190,7 +191,7 @@ bool GridWorld::insertObjectInGrid(const ObjectConstPtr& object)
 
 void GridWorld::printObjectsSize()
 {
-        logDebug("Parent objects are %zu ; Grid World with voxel size %zu and objects size %zu",collision_detection::World::getObjectIds().size(),m_object_map.size(),m_object_map.size());
+        ROS_DEBUG("Parent objects are %zu ; Grid World with voxel size %zu and objects size %zu",collision_detection::World::getObjectIds().size(),m_object_map.size(),m_object_map.size());
 }
 
 bool GridWorld::removeObjectFromGrid(const std::string& object_name)
@@ -201,7 +202,7 @@ bool GridWorld::removeObjectFromGrid(const std::string& object_name)
     if(oit != m_object_map.end() && vit != m_object_voxel_map.end())
     {
        for (const auto& voxel_list : vit->second) {
-            logDebug("Removing %zu voxels from the distance transform", voxel_list.size());
+            ROS_DEBUG("Removing %zu voxels from the distance transform", voxel_list.size());
             m_grid->removePointsFromField(voxel_list);
         }
         m_object_voxel_map.erase(vit);
@@ -222,7 +223,7 @@ bool GridWorld::removeObjectFromGrid(const std::string& object_name)
         m_object_voxel_map.erase(vit);
         return true;
     }
-    logDebug("after removing failure %s ", object_name.c_str());
+    ROS_DEBUG("after removing failure %s ", object_name.c_str());
         printObjectsSize();
     return false;
 }
@@ -260,7 +261,7 @@ void GridWorld::reset()
     m_object_voxel_map.clear();
     m_object_map.clear();
 
-    /*for (conpst auto& entry : m_object_voxel_map) {
+    /*for (const auto& entry : m_object_voxel_map) {
         for (const auto& voxel_list : entry.second) {
             m_grid->addPointsToField(voxel_list);
         }

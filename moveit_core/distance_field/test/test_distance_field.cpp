@@ -39,10 +39,10 @@
 #include <moveit/distance_field/voxel_grid.h>
 #include <moveit/distance_field/propagation_distance_field.h>
 #include <moveit/distance_field/find_internal_points.h>
-#include <console_bridge/console.h>
 #include <geometric_shapes/body_operations.h>
 #include <eigen_conversions/eigen_msg.h>
 #include <octomap/octomap.h>
+#include <ros/console.h>
 
 #include <memory>
 
@@ -56,9 +56,6 @@ static const double origin_x = 0.0;
 static const double origin_y = 0.0;
 static const double origin_z = 0.0;
 static const double max_dist = 0.3;
-
-static const int max_dist_in_voxels = max_dist / resolution + 0.5;
-static const int max_dist_sq_in_voxels = max_dist_in_voxels * max_dist_in_voxels;
 
 static const Eigen::Vector3d point1(0.1, 0.0, 0.0);
 static const Eigen::Vector3d point2(0.0, 0.1, 0.2);
@@ -91,7 +88,7 @@ void print(PropagationDistanceField& pdf, int numX, int numY, int numZ)
       {
         if (pdf.getCell(x, y, z).distance_square_ == 0)
         {
-          // logInform("Obstacle cell %d %d %d", x, y, z);
+          // ROS_INFO_NAMED("distance_field", "Obstacle cell %d %d %d", x, y, z);
         }
       }
     }
@@ -291,11 +288,11 @@ unsigned int countLeafNodes(const octomap::OcTree& octree)
 void check_distance_field(const PropagationDistanceField& df, const EigenSTL::vector_Vector3d& points, int numX,
                           int numY, int numZ, bool do_negs)
 {
-  std::vector<Eigen::Vector3i> points_ind(points.size());
+  EigenSTL::vector_Vector3i points_ind(points.size());
   for (unsigned int i = 0; i < points.size(); i++)
   {
     Eigen::Vector3i loc;
-    bool valid = df.worldToGrid(points[i].x(), points[i].y(), points[i].z(), loc.x(), loc.y(), loc.z());
+    df.worldToGrid(points[i].x(), points[i].y(), points[i].z(), loc.x(), loc.y(), loc.z());
     points_ind[i] = loc;
   }
 
@@ -353,7 +350,7 @@ TEST(TestPropagationDistanceField, TestAddRemovePoints)
   EigenSTL::vector_Vector3d points;
   points.push_back(point1);
   points.push_back(point2);
-  logInform("Adding %u points", points.size());
+  ROS_INFO_NAMED("distance_field", "Adding %zu points", points.size());
   df.addPointsToField(points);
   // print(df, numX, numY, numZ);
 
@@ -469,7 +466,7 @@ TEST(TestSignedPropagationDistanceField, TestSignedAddRemovePoints)
   }
 
   df.reset();
-  logInform("Adding %u points", points.size());
+  ROS_INFO_NAMED("distance_field", "Adding %zu points", points.size());
   df.addPointsToField(points);
   // print(df, numX, numY, numZ);
   // printNeg(df, numX, numY, numZ);
@@ -530,7 +527,7 @@ TEST(TestSignedPropagationDistanceField, TestSignedAddRemovePoints)
 
         EXPECT_EQ(ncell_dist, dist);
 
-        if (ncell == NULL)
+        if (ncell == nullptr)
         {
           if (ncell_dist > 0)
           {
@@ -767,7 +764,7 @@ TEST(TestSignedPropagationDistanceField, TestPerformance)
 
         if (!valid)
         {
-          logWarn("Something wrong");
+          ROS_WARN_NAMED("distance_field", "Something wrong");
           continue;
         }
         bad_vec.push_back(loc);

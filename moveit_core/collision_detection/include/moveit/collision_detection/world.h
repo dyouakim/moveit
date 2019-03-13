@@ -68,13 +68,13 @@ public:
    * This does copy on write and should be quick. */
   World(const World& other);
 
-  ~World();
+   ~World();
 
   /**********************************************************************/
   /* Collision Bodies                                                   */
   /**********************************************************************/
 
-  MOVEIT_CLASS_FORWARD(Object);
+  MOVEIT_STRUCT_FORWARD(Object);
 
   /** \brief A representation of an object */
   struct Object
@@ -158,6 +158,9 @@ public:
   /** \brief Update the pose of a shape in an object. Shape equality is
    * verified by comparing pointers. Returns true on success. */
   bool moveShapeInObject(const std::string& id, const shapes::ShapeConstPtr& shape, const Eigen::Affine3d& pose);
+
+  /** \brief Move all shapes in an object according to the given transform specified in world frame */
+  bool moveObject(const std::string& id, const Eigen::Affine3d& transform);
 
   /** \brief Remove shape from object.
    * Shape equality is verified by comparing pointers. Ownership of the

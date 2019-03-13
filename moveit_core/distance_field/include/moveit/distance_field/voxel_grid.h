@@ -524,7 +524,6 @@ inline void VoxelGrid<T>::setCell(int x, int y, int z, const T& obj)
 template <typename T>
 inline void VoxelGrid<T>::setCell(const Eigen::Vector3i& pos, const T& obj)
 {
-  logWarn("second set cell");
   data_[ref(pos.x(), pos.y(), pos.z())] = obj;
 }
 

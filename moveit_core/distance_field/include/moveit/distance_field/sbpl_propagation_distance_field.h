@@ -29,8 +29,8 @@
 
 /// \author Andrew Dornbush
 
-#ifndef SMPL_PROPAGATION_DISTANCE_FIELD_H
-#define SMPL_PROPAGATION_DISTANCE_FIELD_H
+#ifndef MOVEIT_SMPL_PROPAGATION_DISTANCE_FIELD_H
+#define MOVEIT_SMPL_PROPAGATION_DISTANCE_FIELD_H
 
 // system includes
 #include <moveit/distance_field/propagation_distance_field.h>

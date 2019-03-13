@@ -679,44 +679,8 @@ bool plan_execution::PlanExecution::isRemainingPathValid(const ExecutableMotionP
   return true;
 }
 
-void plan_execution::PlanExecution::computeFirstValidPoint(const ExecutableMotionPlan &plan, const std::pair<int, int> &path_segment)
-{
 
-  if (path_segment.first >= 0 && path_segment.second >= 0)
-  {
-    planning_scene_monitor::LockedPlanningSceneRO lscene(plan.planning_scene_monitor_);  // lock the scene so that it
-                                                                                         // does not modify the world                                                                                 // representation while
-    const robot_trajectory::RobotTrajectory &t = *plan.plan_components_[path_segment.first].trajectory_;
-    const collision_detection::AllowedCollisionMatrix *acm =
-        plan.plan_components_[path_segment.first].allowed_collision_matrix_.get();
-    std::size_t wpc = t.getWayPointCount();
-    collision_detection::CollisionRequest req;
-    req.group_name = t.getGroupName();
-    for (std::size_t i = invalidWayPointIdx_+1; i < wpc; ++i)
-    {
-      collision_detection::CollisionResult res;
-      if (acm)
-        plan.planning_scene_->checkCollision(req, res, t.getWayPoint(i), *acm);
-      else
-        plan.planning_scene_->checkCollision(req, res, t.getWayPoint(i));
-
-      bool invalid = res.collision || !plan.planning_scene_->isStateFeasible(t.getWayPoint(i), false);
-      if(invalid)
-      {
-        ROS_ERROR_STREAM("invalid  continue "<<i<<","<<wpc);
-        continue;
-      }
-      else
-      {
-        firstValidPointIdx_ = i+1;
-        ROS_ERROR_STREAM("valid set "<<firstValidPointIdx_);
-        return;
-      }
-    }
-  }
-}
-
-
+/* added to integrate reactive avoidance with planning*/
 void plan_execution::PlanExecution::moveToEscapePoint(ExecutableMotionPlan &plan, const Options &opt, moveit_msgs::MoveItErrorCodes& moveToEscapeResult)
 {
   
@@ -726,6 +690,11 @@ void plan_execution::PlanExecution::moveToEscapePoint(ExecutableMotionPlan &plan
 
 moveit_msgs::MoveItErrorCodes plan_execution::PlanExecution::executeAndMonitor( ExecutableMotionPlan &plan, const Options &opt)
 {
+  if (!plan.planning_scene_monitor_)
+    plan.planning_scene_monitor_ = planning_scene_monitor_;
+  if (!plan.planning_scene_)
+    plan.planning_scene_ = planning_scene_monitor_->getPlanningScene();
+
   moveit_msgs::MoveItErrorCodes result;
 
   // try to execute the trajectory
@@ -781,7 +750,8 @@ moveit_msgs::MoveItErrorCodes plan_execution::PlanExecution::executeAndMonitor( 
         plan.plan_components_[i].trajectory_->unwind(plan.plan_components_[prev].trajectory_->getLastWayPoint());
     }
 
-    prev = i;
+    if (plan.plan_components_[i].trajectory_ && !plan.plan_components_[i].trajectory_->empty())
+      prev = i;
 
     // convert to message, pass along
     moveit_msgs::RobotTrajectory msg;
@@ -821,7 +791,6 @@ moveit_msgs::MoveItErrorCodes plan_execution::PlanExecution::executeAndMonitor( 
       new_scene_update_ = false;
       if (!isRemainingPathValid(plan))
       {
-        //computeFirstValidPoint(plan, trajectory_execution_manager_->getCurrentExpectedTrajectoryIndex());
         path_became_invalid_ = true;
         break;
       }
@@ -908,13 +877,14 @@ void plan_execution::PlanExecution::successfulTrajectorySegmentExecution(const E
       preempt_requested_ = true;
       return;
     }
-   // if there is a next trajectory, check it for validity, before we start execution
-  std::size_t test_index = index;
-  while (++test_index < plan->plan_components_.size())
-    if (plan->plan_components_[test_index].trajectory_ && !plan->plan_components_[test_index].trajectory_->empty())
-    {
-      if (!isRemainingPathValid(*plan, std::make_pair<int>(test_index, 0)))
-        path_became_invalid_ = true;
-      break;
-    }
+
+
+  // if there is a next trajectory, check it for validity, before we start execution
+  ++index;
+  if (index < plan->plan_components_.size() && plan->plan_components_[index].trajectory_ &&
+      !plan->plan_components_[index].trajectory_->empty())
+  {
+    if (!isRemainingPathValid(*plan, std::make_pair<int>(index, 0)))
+      path_became_invalid_ = true;
+  }
 }

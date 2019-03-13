@@ -3,27 +3,31 @@ project(moveit_ros_perception)
 
 add_compile_options(-std=c++11)
 
+option(WITH_OPENGL "Build the parts that depend on OpenGL" ON)
+
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
 find_package(Boost REQUIRED thread signals)
 
-find_package(OpenGL REQUIRED)
-find_package(GLEW REQUIRED)
-find_package(GLUT REQUIRED)
 find_package( PCL 1.7 REQUIRED )
 
-find_package(dynamicEDT3D REQUIRED)
-
-if (OPENGL_FOUND)
+if(WITH_OPENGL)
+  find_package(OpenGL REQUIRED)
+  find_package(GLEW REQUIRED)
+  find_package(GLUT REQUIRED)
   set(gl_LIBS ${gl_LIBS} ${OPENGL_LIBRARIES})
-endif(OPENGL_FOUND)
+  set(perception_GL_INCLUDE_DIRS "mesh_filter/include" "depth_image_octomap_updater/include")
+  set(SYSTEM_GL_INCLUDE_DIRS ${GLEW_INCLUDE_DIR} ${GLUT_INCLUDE_DIR})
+endif(WITH_OPENGL)
+
 if(APPLE)
   find_package(X11 REQUIRED)
 endif(APPLE)
 
 find_package(catkin REQUIRED COMPONENTS
+  cv_bridge
   moveit_core
   roscpp
   rosconsole
@@ -52,13 +56,13 @@ find_package(OpenCV)
 
 catkin_package(
   INCLUDE_DIRS
-    mesh_filter/include
     lazy_free_space_updater/include
-    depth_image_octomap_updater/include
     point_containment_filter/include
     occupancy_map_monitor/include
     pointcloud_octomap_updater/include
     semantic_world/include
+    ${perception_GL_INCLUDE_DIRS}
+    ${OCTOMAP_INCLUDE_DIRS}
   LIBRARIES
     moveit_lazy_free_space_updater
     moveit_point_containment_filter
@@ -69,19 +73,19 @@ catkin_package(
   CATKIN_DEPENDS
     moveit_core
     image_transport
+    sensor_msgs
     moveit_msgs
    smpl
   DEPENDS
     EIGEN3
 )
 
-include_directories(mesh_filter/include
-                    lazy_free_space_updater/include
-                    depth_image_octomap_updater/include
+include_directories(lazy_free_space_updater/include
                     point_containment_filter/include
                     occupancy_map_monitor/include
                     pointcloud_octomap_updater/include
                     semantic_world/include
+                    ${perception_GL_INCLUDE_DIRS}
                     ${Boost_INCLUDE_DIRS}
                     ${catkin_INCLUDE_DIRS}	    
                     ${DYNAMICEDT3D_INCLUDE_DIRS}
@@ -89,13 +93,10 @@ include_directories(mesh_filter/include
 include_directories(SYSTEM
                     ${OpenCV_INCLUDE_DIRS}
                     ${EIGEN3_INCLUDE_DIRS}
-                    ${GLEW_INCLUDE_DIR}
-                    ${GLUT_INCLUDE_DIR}
+                    ${SYSTEM_GL_INCLUDE_DIR}
                     ${X11_INCLUDE_DIR}
                     )
 
-link_directories(${Boost_LIBRARY_DIRS})
-link_directories(${catkin_LIBRARY_DIRS})
 link_directories(${X11_LIBRARY_DIR})
 link_directories(${DYNAMICEDT3D_LIBRARY_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
@@ -106,8 +107,10 @@ add_subdirectory(lazy_free_space_updater)
 add_subdirectory(point_containment_filter)
 add_subdirectory(occupancy_map_monitor)
 add_subdirectory(pointcloud_octomap_updater)
-add_subdirectory(mesh_filter)
-add_subdirectory(depth_image_octomap_updater)
+if (WITH_OPENGL)
+  add_subdirectory(mesh_filter)
+  add_subdirectory(depth_image_octomap_updater)
+endif(WITH_OPENGL)
 
 add_subdirectory(semantic_world)
 

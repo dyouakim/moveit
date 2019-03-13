@@ -51,7 +51,7 @@
 
 #include <moveit/robot_state/conversions.h>
 #include <warehouse_ros/database_loader.h>
-#include <pluginlib/class_loader.h>
+#include <pluginlib/class_loader.hpp>
 
 #include <moveit_msgs/GetPositionIK.h>
 #include <moveit_msgs/GetPositionFK.h>

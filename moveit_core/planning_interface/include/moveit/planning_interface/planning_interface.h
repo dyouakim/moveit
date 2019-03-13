@@ -49,7 +49,7 @@ namespace planning_scene
 MOVEIT_CLASS_FORWARD(PlanningScene);
 }
 
-/** \brief This namespace includes the base class for MoveIt planners */
+/** \brief This namespace includes the base class for MoveIt! planners */
 namespace planning_interface
 {
 /**
@@ -146,7 +146,7 @@ protected:
 
 MOVEIT_CLASS_FORWARD(PlannerManager);
 
-/** \brief Base class for a MoveIt planner */
+/** \brief Base class for a MoveIt! planner */
 class PlannerManager
 {
 public:

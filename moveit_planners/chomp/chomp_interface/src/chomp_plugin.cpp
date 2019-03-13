@@ -35,12 +35,13 @@
 #include <moveit/planning_interface/planning_interface.h>
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/robot_model/robot_model.h>
+#include <moveit/collision_distance_field/collision_detector_allocator_hybrid.h>
 #include <moveit_msgs/GetMotionPlan.h>
 #include <chomp_interface/chomp_planning_context.h>
 
 #include <boost/shared_ptr.hpp>
 
-#include <pluginlib/class_list_macros.h>
+#include <pluginlib/class_list_macros.hpp>
 
 namespace chomp_interface
 {
@@ -53,14 +54,10 @@ public:
 
   bool initialize(const robot_model::RobotModelConstPtr &model, const std::string &ns)
   {
-    // model->printModelInfo(std::cout);
-    std::vector<std::string> groups = model->getJointModelGroupNames();
-    ROS_INFO_STREAM("Following groups exist:");
-    for (int i = 0; i < groups.size(); i++)
+    for (const std::string& group : model->getJointModelGroupNames())
     {
-      ROS_INFO("%s", groups[i].c_str());
-      planning_contexts_[groups[i]] =
-          CHOMPPlanningContextPtr(new CHOMPPlanningContext("chomp_planning_context", groups[i], model));
+      planning_contexts_[group] =
+          CHOMPPlanningContextPtr(new CHOMPPlanningContext("chomp_planning_context", group, model));
     }
     return true;
   }
@@ -69,7 +66,7 @@ public:
                                                             const planning_interface::MotionPlanRequest &req,
                                                             moveit_msgs::MoveItErrorCodes &error_code) const
   {
-    error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
+     error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
 
     if (req.group_name.empty())
     {
@@ -78,31 +75,25 @@ public:
       return planning_interface::PlanningContextPtr();
     }
 
-   if (!planning_scene)
+    if (!planning_scene)
     {
       ROS_ERROR("No planning scene supplied as input");
       error_code.val = moveit_msgs::MoveItErrorCodes::FAILURE;
       return planning_interface::PlanningContextPtr();
     }
 
-    planning_contexts_.at(req.group_name)->setMotionPlanRequest(req);
 
-
-    //copy the current planning scene by creating a new non const one, copy all important information and modify the collision checker to the hybrid one used by CHOMP
-    const robot_model::RobotModelConstPtr robotModel = planning_scene->getRobotModel();
-    collision_detection::CollisionDetectorAllocatorPtr hybrid_cd(collision_detection::CollisionDetectorAllocatorHybrid::create());
-    planning_scene::PlanningScenePtr planning_scene_ptr (new planning_scene::PlanningScene(robotModel));
-    moveit_msgs::PlanningScene planningSceneMsg;
-    planning_scene->getPlanningSceneMsg(planningSceneMsg);
-    planning_scene_ptr->setCurrentState(planning_scene->getCurrentState());
-    planning_scene_ptr->setName(planning_scene->getName());
-    planning_scene_ptr->setPlanningSceneMsg(planningSceneMsg);
-    
-    planning_scene_ptr->setActiveCollisionDetector(hybrid_cd, true);
-
-    planning_contexts_.at(req.group_name)->setPlanningScene(planning_scene_ptr);
+    // create PlanningScene using hybrid collision detector
+    planning_scene::PlanningScenePtr ps = planning_scene->diff();
+    ps->setActiveCollisionDetector(collision_detection::CollisionDetectorAllocatorHybrid::create(), true);
+   
+    // retrieve and configure existing context
+    const CHOMPPlanningContextPtr& context = planning_contexts_.at(req.group_name);
+    context->setPlanningScene(ps);
+    context->setMotionPlanRequest(req);
     error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
-    return planning_contexts_.at(req.group_name);
+    return context;
+
   }
 
   bool canServiceRequest(const planning_interface::MotionPlanRequest &req) const

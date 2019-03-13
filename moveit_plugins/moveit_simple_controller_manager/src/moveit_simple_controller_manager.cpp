@@ -39,7 +39,7 @@
 #include <moveit_simple_controller_manager/action_based_controller_handle.h>
 #include <moveit_simple_controller_manager/gripper_controller_handle.h>
 #include <moveit_simple_controller_manager/follow_joint_trajectory_controller_handle.h>
-#include <pluginlib/class_list_macros.h>
+#include <pluginlib/class_list_macros.hpp>
 #include <algorithm>
 #include <map>
 
@@ -91,8 +91,8 @@ public:
 
         if (controller_list[i]["joints"].getType() != XmlRpc::XmlRpcValue::TypeArray)
         {
-          ROS_ERROR_STREAM_NAMED("manager", "The list of joints for controller " << name << " is not specified as an "
-                                                                                            "array");
+          ROS_ERROR_STREAM_NAMED("manager", "The list of joints for controller " << name
+                                                                                 << " is not specified as an array");
           continue;
         }
 

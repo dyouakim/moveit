@@ -35,6 +35,7 @@
 /* Author: Ryan Luna */
 
 #include <moveit/benchmarks/BenchmarkExecutor.h>
+#include <moveit/utils/lexical_casts.h>
 #include <moveit/version.h>
 #include <eigen_conversions/eigen_msg.h>
 
@@ -126,8 +127,7 @@ void BenchmarkExecutor::initialize(const std::vector<std::string>& plugin_classe
       planning_interface::PlannerManagerPtr p = planner_plugin_loader_->createUniqueInstance(plugin_classes[i]);
       p->initialize(planning_scene_->getRobotModel(), "");
 
-      const planning_interface::PlannerConfigurationMap& config_map = p->getPlannerConfigurations();
-
+      p->getPlannerConfigurations();
       planner_interfaces_[plugin_classes[i]] = p;
     }
     catch (pluginlib::PluginlibException& ex)
@@ -355,11 +355,10 @@ bool BenchmarkExecutor::initializeBenchmarks(const BenchmarkOptions& opts, movei
   std::vector<TrajectoryConstraints> traj_constraints;
   std::vector<BenchmarkRequest> queries;
 
-
-
   const std::string& group_name = opts.getGroupName();
   std::vector<std::string> pathConstraints;
   pathConstraints.push_back(opts.getPathConstraintRegex());
+
   bool ok = loadPlanningScene(opts.getSceneName(), scene_msg) && loadStates(opts.getStartStateRegex(), start_states) &&
             loadPathConstraints(opts.getGoalConstraintRegex(), goal_constraints) &&
             loadPathConstraints(pathConstraints, path_constraints) &&
@@ -581,6 +580,12 @@ bool BenchmarkExecutor::plannerConfigurationsExist(const std::map<std::string, s
   {
     planning_interface::PlannerManagerPtr pm = planner_interfaces_[it->first];
     const planning_interface::PlannerConfigurationMap& config_map = pm->getPlannerConfigurations();
+
+    // if the planner is chomp or stomp skip this function and return true for checking planner configurations for the
+    // planning group otherwise an error occurs, because for OMPL a specific planning algorithm needs to be defined for
+    // a planning group, whereas with STOMP and CHOMP this is not necessary
+    if (pm->getDescription().compare("stomp") || pm->getDescription().compare("chomp"))
+      continue;
 
     for (std::size_t i = 0; i < it->second.size(); ++i)
     {
@@ -1211,12 +1216,13 @@ void BenchmarkExecutor::collectMetrics(PlannerRunData& metrics,
                                        const planning_interface::MotionPlanDetailedResponse& mp_res, bool solved,
                                        double total_time, std::ofstream& metricsFile, std::ofstream& distToObstFile, std::ofstream& trajectoryFile, std::ofstream &eeFile, std::ofstream &jointsDistFile)
 {
+
     
   moveit_msgs::DisplayTrajectory display;
   moveit_msgs::MotionPlanDetailedResponse resp_msg;
   
   
-   metrics["time REAL"] = boost::lexical_cast<std::string>(total_time);
+  metrics["time REAL"] = moveit::core::toString(total_time);
   metrics["solved BOOLEAN"] = boost::lexical_cast<std::string>(solved);
 
   if (solved)
@@ -1396,8 +1402,9 @@ void BenchmarkExecutor::collectMetrics(PlannerRunData& metrics,
     }
     if (process_time <= 0.0)
       process_time = 0.0;
-    metrics["process_time REAL"] = boost::lexical_cast<std::string>(process_time);
+    metrics["process_time REAL"] = moveit::core::toString(process_time);
     metricsFile<<std::endl;
+
   }
 
 }

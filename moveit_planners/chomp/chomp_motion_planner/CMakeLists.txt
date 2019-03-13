@@ -3,7 +3,8 @@ project(chomp_motion_planner)
 
 add_definitions(-std=c++11)
 
-find_package(catkin REQUIRED COMPONENTS roscpp moveit_experimental moveit_core smpl)
+
+find_package(catkin REQUIRED COMPONENTS roscpp moveit_core smpl)
 
 catkin_package(
   INCLUDE_DIRS include

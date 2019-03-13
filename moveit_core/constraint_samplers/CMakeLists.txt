@@ -1,5 +1,6 @@
 set(MOVEIT_LIB_NAME moveit_constraint_samplers)
 
+add_compile_options(-Wno-cast-qual)  # suppress warning in tf/Vector3.h: https://github.com/ros/geometry/pull/167
 add_library(${MOVEIT_LIB_NAME}
   src/constraint_sampler.cpp
   src/constraint_sampler_manager.cpp
@@ -14,7 +15,7 @@ target_link_libraries(${MOVEIT_LIB_NAME}
   moveit_kinematic_constraints
   moveit_kinematics_base
   moveit_planning_scene
-  ${catkin_LIBRARIES} ${console_bridge_LIBRARIES} ${urdfdom_LIBRARIES} ${urdfdom_headers_LIBRARIES} ${Boost_LIBRARIES})
+  ${catkin_LIBRARIES} ${urdfdom_LIBRARIES} ${urdfdom_headers_LIBRARIES} ${Boost_LIBRARIES})
 add_dependencies(${MOVEIT_LIB_NAME} ${catkin_EXPORTED_TARGETS})
 
 install(TARGETS ${MOVEIT_LIB_NAME}
@@ -27,7 +28,6 @@ if(CATKIN_ENABLE_TESTING)
   find_package(orocos_kdl REQUIRED)
   find_package(angles REQUIRED)
   find_package(tf_conversions REQUIRED)
-  find_package(moveit_resources REQUIRED)
 
   include_directories(${orocos_kdl_INCLUDE_DIRS} ${angles_INCLUDE_DIRS} ${tf_conversions_INCLUDE_DIRS} ${moveit_resources_INCLUDE_DIRS})
 
@@ -40,7 +40,6 @@ if(CATKIN_ENABLE_TESTING)
     ${MOVEIT_LIB_NAME}
     ${catkin_LIBRARIES}
     ${angles_LIBRARIES}
-    ${console_bridge_LIBRARIES}
     ${orocos_kdl_LIBRARIES}
     ${tf_conversions_LIBRARIES}
     ${urdfdom_LIBRARIES}

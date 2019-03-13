@@ -479,8 +479,6 @@ public:
   /** \brief Get the names of the end effectors attached to this group */
   const std::vector<std::string> &getAttachedEndEffectorNames() const
   {
-    for(int i=0;i<attached_end_effector_names_.size();i++)
-      logError("EE ATTACHED: %s",attached_end_effector_names_[i]);
     return attached_end_effector_names_;
   }
 

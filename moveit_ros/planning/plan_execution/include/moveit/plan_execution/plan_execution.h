@@ -45,7 +45,6 @@
 #include <moveit/sensor_manager/sensor_manager.h>
 #include <pluginlib/class_loader.h>
 #include <std_msgs/Int32.h>
-
 #include <moveit_msgs/GetPositionFK.h>
 
 /** \brief This namespace includes functionality specific to the execution and monitoring of motion plans */
@@ -135,19 +134,23 @@ public:
   void planAndExecute(ExecutableMotionPlan &plan, const Options &opt);
   void planAndExecute(ExecutableMotionPlan &plan, const moveit_msgs::PlanningScene &scene_diff, const Options &opt);
 
+  /** \brief Execute and monitor a previously created \e plan.
+
+      In case there is no \e planning_scene or \e planning_scene_monitor set in the \e plan they will be set at the
+      start of the method. They are then used to monitor the execution. */
+  moveit_msgs::MoveItErrorCodes executeAndMonitor(ExecutableMotionPlan& plan);
+
   void stop();
 
   std::string getErrorCodeString(const moveit_msgs::MoveItErrorCodes &error_code);
 
   void moveToEscapePoint(ExecutableMotionPlan &plan, const Options &opt, moveit_msgs::MoveItErrorCodes& moveToEscapeResult);
  
-
 private:
   void planAndExecuteHelper(ExecutableMotionPlan &plan, const Options &opt);
   moveit_msgs::MoveItErrorCodes executeAndMonitor( ExecutableMotionPlan &plan, const Options &opt);
   bool isRemainingPathValid(const ExecutableMotionPlan &plan);
   bool isRemainingPathValid(const ExecutableMotionPlan &plan, const std::pair<int, int> &path_segment);
-  void computeFirstValidPoint(const ExecutableMotionPlan &plan, const std::pair<int, int> &path_segment);
   void planningSceneUpdatedCallback(const planning_scene_monitor::PlanningSceneMonitor::SceneUpdateType update_type);
   void doneWithTrajectoryExecution(const moveit_controller_manager::ExecutionStatus &status);
   void successfulTrajectorySegmentExecution(const ExecutableMotionPlan *plan, std::size_t index);

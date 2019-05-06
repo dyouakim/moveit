@@ -160,7 +160,8 @@ void PlanningScene::setGridParams(moveit_msgs::WorkspaceParameters& workspace, d
             max_dist);
 
 
-  sbpl::OccupancyGridPtr grid = std::make_shared<sbpl::OccupancyGrid>(hdf);
+  //sbpl::OccupancyGridPtr grid = std::make_shared<sbpl::OccupancyGrid>(hdf);
+  auto grid = std::make_shared<sbpl::OccupancyGrid>(hdf);
   //grid->setReferenceFrame(getPlanningFrame());
   world_ = collision_detection::WorldPtr(new collision_detection::GridWorld(*world_const_.get(), grid.get()));
   
